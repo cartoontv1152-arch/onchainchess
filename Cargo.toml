@@ -1,0 +1,31 @@
+[package]
+name = "onchainchess"
+version = "0.1.0"
+authors = ["Chess Game Team"]
+edition = "2021"
+
+[features]
+test = []
+
+[dependencies]
+async-graphql.workspace = true
+futures.workspace = true
+linera-sdk.workspace = true
+linera-views.workspace = true
+linera-views-derive.workspace = true
+serde_json.workspace = true
+serde = { workspace = true }
+log.workspace = true
+tokio = { version = "1.36.0", default-features = false, features = ["rt", "sync"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+linera-sdk = { workspace = true, features = ["test", "wasmer"] }
+tokio = { version = "1.36.0", default-features = false, features = ["rt", "sync"] }
+
+[[bin]]
+name = "onchainchess_contract"
+path = "src/contract.rs"
+
+[[bin]]
+name = "onchainchess_service"
+path = "src/service.rs"
