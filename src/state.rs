@@ -111,14 +111,19 @@ impl ChessState {
     pub async fn get_available_games(&self) -> Result<Vec<GameState>, ViewError> {
         let mut games = Vec::new();
         
-        self.games
-            .for_each_index_value(|_game_id, game| {
+        // Collect all game IDs from player_games to iterate
+        // This is a workaround since MapView doesn't have direct iteration
+        // We'll use the game_counter to know the range
+        let max_game_id = *self.game_counter.get();
+        
+        // Iterate through possible game IDs (from 1 to max_game_id)
+        for game_id in 1..=max_game_id {
+            if let Some(game) = self.games.get(&game_id).await? {
                 if game.status == GameStatus::WaitingForPlayer {
-                    games.push(game.into_owned());
+                    games.push(game);
                 }
-                Ok(())
-            })
-            .await?;
+            }
+        }
 
         games.sort_by(|a, b| b.created_at.cmp(&a.created_at));
         Ok(games)

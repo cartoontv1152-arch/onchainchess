@@ -1,0 +1,20 @@
+OnChain Chess - Testnet Conway Deployment
+==========================================
+Deployment Date: Mon Jan 12 18:38:51 UTC 2026
+Chain ID: 4f91f4e665b501ab341729e59f2c66ab0f7556460d7cf384afb0e5cec50a5c51
+Application ID: 3e324da7596aa2772fac866bb73b44581536ad96f35669949bc60813c9d96a25
+Owner ID: 0x929b04dd55584d8b0928b8f8ce45fe6a7116ac07edd9bc7c777fb4844f560701
+Module ID: 3e324da7596aa2772fac866bb73b44581536ad96f35669949bc60813c9d96a25
+
+To start the service:
+  linera service --port 8080
+
+To access the frontend:
+  cd web-frontend
+  npm install
+  npm run dev
+
+Then open: http://localhost:3000/4f91f4e665b501ab341729e59f2c66ab0f7556460d7cf384afb0e5cec50a5c51?app=3e324da7596aa2772fac866bb73b44581536ad96f35669949bc60813c9d96a25&owner=0x929b04dd55584d8b0928b8f8ce45fe6a7116ac07edd9bc7c777fb4844f560701&port=8080
+
+Or use the .env file:
+  http://localhost:3000/

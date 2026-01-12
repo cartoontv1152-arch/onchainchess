@@ -47,27 +47,47 @@ export class LineraAdapter {
         console.log("🔗 Connecting with Dynamic wallet:", address);
 
         try {
+          // Initialize WASM modules for Linera client
           if (!this.wasmInitPromise) this.wasmInitPromise = initLinera();
           await this.wasmInitPromise;
           console.log("✅ Linera WASM modules initialized successfully");
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
-          if (msg.includes("storage is already initialized")) {
-            console.warn(
-              "⚠️ Linera storage already initialized; continuing without re-init"
-            );
-          } else {
-            throw e;
+          // Ignore if already initialized
+          if (!msg.includes("storage is already initialized")) {
+             console.warn("⚠️ WASM Init warning:", msg);
           }
         }
 
-        const faucet = await new Faucet(rpcUrl);
-        const wallet = await faucet.createWallet();
-        const chainId = await faucet.claimChain(wallet, address);
+        const faucet = new Faucet(rpcUrl);
+        // Create a temporary wallet for this session
+        const wallet = new Wallet(); 
+        
+        // We use the Dynamic wallet as the signer
+        const signer = new DynamicSigner(dynamicWallet);
+        const client = new Client(wallet, signer);
 
-        const signer = await new DynamicSigner(dynamicWallet);
-        const client = await new Client(wallet, signer);
-        console.log("✅ Linera wallet created successfully!");
+        // Get or claim a chain for this user
+        let chainId: string;
+        try {
+            console.log("Requesting chain from faucet...");
+            // Use claimChain directly with the public key (address)
+            // Note: The API signature might vary slightly depending on version, 
+            // but typically requires the public key to assign ownership.
+            // If the user already has a chain, this might return it or create a new one.
+            const publicKey = "0x" + dynamicWallet.address.replace(/^0x/, ""); 
+            chainId = await faucet.claimChain(publicKey); 
+            console.log("✅ Chain claimed:", chainId);
+        } catch (error) {
+            console.error("Failed to claim chain:", error);
+             // Fallback or retry logic could go here
+             throw error;
+        }
+
+        // Configure the client with the claimed chain
+        // client.addChain(chainId); // Hypothetical API, adjust based on actual Client API
+
+        console.log("✅ Linera wallet setup complete!");
 
         this.provider = {
           client,

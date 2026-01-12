@@ -2,6 +2,17 @@
 
 A fully on-chain chess game built on Linera blockchain for the Real-Time Markets Wavehack.
 
+
+============================================
+🎉 Deployment Complete!
+============================================
+
+📋 Deployment Summary:
+  Chain ID:      f0e379379d5715d922c7da443db9c09ce8642111f8024b296f4ca894bde1cd1a
+  Application ID: 3e324da7596aa2772fac866bb73b44581536ad96f35669949bc60813c9d96a25
+  Owner ID:      0x62bda14cdcb5ee207ff27b60975283e35229424320a48ac10dc4b006a7478fa2
+  Module ID:     3e324da7596aa2772fac866bb73b44581536ad96f35669949bc60813c9d96a25
+
 ## 🎯 Overview
 
 OnChain Chess is a decentralized chess game where all moves are stored and validated on-chain using Linera's microchains. Players can create games, join games, make moves, and all game state is persisted on the blockchain.
@@ -58,8 +69,16 @@ OnChain Chess is a decentralized chess game where all moves are stored and valid
 
 - **Rust**: Latest stable version
 - **Node.js**: v16 or higher
-- **Linera SDK**: `cargo install --locked linera-service@0.15.7`
+- **Linera SDK**: Version 0.15.7 (Handled automatically by `DEPLOY_TESTNET_CONWAY.sh`)
 - **WASM Target**: `rustup target add wasm32-unknown-unknown`
+
+### 🚀 Quick Deployment (Recommended)
+
+Run the automated deployment script which handles version checks, building, and deploying to Testnet Conway:
+
+```bash
+bash DEPLOY_TESTNET_CONWAY.sh
+```
 
 ### Wallet Setup
 
@@ -138,7 +157,39 @@ OnChain Chess is a decentralized chess game where all moves are stored and valid
 
 ## 📋 Deployment to Testnet Conway
 
-See the parent directory's `TESTNET_CONWAY_DEPLOYMENT.md` for detailed deployment instructions.
+### 🚀 Quick Deploy (Recommended)
+
+**In WSL terminal:**
+```bash
+cd /mnt/c/Users/parth/Desktop/onchainchess
+bash QUICK_DEPLOY.sh
+```
+
+Then:
+```bash
+# Terminal 1: Start service
+linera service --port 8080
+
+# Terminal 2: Start frontend
+cd web-frontend
+npm install
+npm run dev
+```
+
+Open: `http://localhost:3000/`
+
+### 📚 Detailed Guides
+
+- **[START_HERE_DEPLOYMENT.md](START_HERE_DEPLOYMENT.md)** - Quick start guide
+- **[WSL_DEPLOYMENT_GUIDE.md](WSL_DEPLOYMENT_GUIDE.md)** - Complete step-by-step guide
+- **[DEPLOYMENT_SUMMARY.md](DEPLOYMENT_SUMMARY.md)** - Deployment overview
+
+### ✅ What's Included
+
+- ✅ Automated deployment scripts
+- ✅ Testnet Conway setup
+- ✅ Environment configuration
+- ✅ Troubleshooting guides
 
 ## 🎮 How to Play
 
