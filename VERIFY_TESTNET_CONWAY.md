@@ -6,6 +6,9 @@
 
 ## 🔍 Method 1: Browser Console Check (Easiest)
 
+
+
+
 ### Steps:
 
 1. **Open your app** in browser: `http://localhost:3000`

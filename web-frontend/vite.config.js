@@ -13,6 +13,10 @@ export default defineConfig({
     port: 3000,
     host: '0.0.0.0',
     historyApiFallback: true,
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+    },
     proxy: {
       '/chains': {
         target: 'http://localhost:8080',
@@ -24,10 +28,16 @@ export default defineConfig({
         ws: true,
         changeOrigin: true,
       }
-    }
+    },
   },
   build: {
     outDir: 'build',
+  },
+  preview: {
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+    },
   },
   define: {
     global: 'globalThis',

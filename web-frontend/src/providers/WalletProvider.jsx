@@ -232,7 +232,6 @@ export const WalletProvider = ({ children, appChainId }) => {
         await connectToWallet('dynamic', null, 'eth_requestAccounts');
         return;
       } catch (err) {
-
       }
     }
 
@@ -245,7 +244,6 @@ export const WalletProvider = ({ children, appChainId }) => {
           return;
         }
       } catch (err) {
-
       }
     }
 
@@ -253,7 +251,6 @@ export const WalletProvider = ({ children, appChainId }) => {
       try {
         await connectToWallet('ethereum', window.ethereum, 'eth_accounts');
       } catch (err) {
-
       }
     }
   }, [getCachedWalletState, updateWalletState, connectToWallet, primaryWallet]);
@@ -274,7 +271,6 @@ export const WalletProvider = ({ children, appChainId }) => {
       if (!isConnected || walletType !== 'dynamic') {
         reconnectTimeoutRef.current = setTimeout(() => {
           connectToWallet('dynamic', null).catch(err => {
-
           });
         }, RECONNECT_DELAY);
       } else if (account !== formattedAccount && account !== 'Connected') {

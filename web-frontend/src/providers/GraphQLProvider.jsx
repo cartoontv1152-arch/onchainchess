@@ -28,9 +28,12 @@ function apolloClient(chainId, applicationId, port, host = 'localhost') {
       }
     });
   }
-  
-  const wsUrl = `/ws`;
-  const httpUrl = `/chains/${chainId}/applications/${applicationId}`;
+
+  const normalizedHost = host.replace(/^\s*https?:\/\//, '');
+  const httpBase = `http://${normalizedHost}:${port}`;
+  const wsBase = `ws://${normalizedHost}:${port}`;
+  const wsUrl = `${wsBase}/ws`;
+  const httpUrl = `${httpBase}/chains/${chainId}/applications/${applicationId}`;
   
   const wsLink = new GraphQLWsLink(
     createClient({
