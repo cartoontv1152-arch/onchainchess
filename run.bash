@@ -7,7 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Configurable defaults (can be overridden via environment variables)
 FAUCET_URL="${FAUCET_URL:-https://faucet.testnet-conway.linera.net}"
 SERVICE_PORT="${SERVICE_PORT:-8080}"
-FRONTEND_PORT="${FRONTEND_PORT:-3000}"
+FRONTEND_PORT="${FRONTEND_PORT:-5173}"
 
 export LINERA_DIR="${LINERA_DIR:-$SCRIPT_DIR}"
 export LINERA_WALLET="${LINERA_WALLET:-$HOME/.config/linera/wallet.json}"
@@ -22,6 +22,12 @@ echo "Linera binaries   : $(command -v linera || echo 'not found')"
 echo "Faucet URL        : $FAUCET_URL"
 echo "Service port      : $SERVICE_PORT"
 echo "Frontend port     : $FRONTEND_PORT"
+
+# Ensure npm is available when using nvm-installed Node
+export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+if [ -s "$NVM_DIR/nvm.sh" ]; then
+  . "$NVM_DIR/nvm.sh"
+fi
 
 # Ensure wasm target is available
 if ! rustup target list --installed | grep -q "wasm32-unknown-unknown"; then
