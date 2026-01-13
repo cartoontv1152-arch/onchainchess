@@ -17,16 +17,67 @@ async function ensureLineraWasm() {
   if (!wasmInitPromise) {
     wasmInitPromise = (async () => {
       try {
-        const wasmIndexUrl = new URL("/wasm/index.js", window.location.origin).toString();
-        const init = (await import(/* @vite-ignore */ wasmIndexUrl)).default;
-        await init();
+        // Load WASM from public directory
+        // Files in /public cannot be imported directly in Vite, so we use a workaround
+        const wasmIndexUrl = "/wasm/index.js";
+        
+        // Check if already loaded
+        if ((window as any).__lineraWasmModule) {
+          console.log("WASM already loaded");
+          const init = (window as any).__lineraWasmModule.default || (window as any).__lineraWasmModule;
+          await init();
+        } else {
+          // Fetch the WASM module code and execute it
+          const response = await fetch(wasmIndexUrl);
+          if (!response.ok) {
+            throw new Error(`Failed to fetch WASM: ${response.status} ${response.statusText}`);
+          }
+          
+          const contentType = response.headers.get("content-type");
+          if (contentType && contentType.includes("text/html")) {
+            throw new Error("WASM file not found - server returned HTML instead. Make sure /wasm/index.js exists in public directory.");
+          }
+          
+          let code = await response.text();
+          
+          // Fix relative imports to use absolute paths from /wasm/
+          // Replace relative imports like './snippets/...' with '/wasm/snippets/...'
+          code = code.replace(/from\s+['"]\.\//g, (match) => {
+            return match.replace('./', '/wasm/');
+          });
+          
+          // Create a blob URL and import it
+          const blob = new Blob([code], { type: "application/javascript" });
+          const blobUrl = URL.createObjectURL(blob);
+          
+          try {
+            // Use dynamic import with the blob URL
+            const wasmModule = await import(/* @vite-ignore */ blobUrl);
+            (window as any).__lineraWasmModule = wasmModule;
+            const init = wasmModule.default || wasmModule;
+            // Try to initialize - if WASM file doesn't exist, init() will handle it
+            // The init function can accept undefined to use default path or a string path
+            try {
+              await init('/wasm/index_bg.wasm');
+            } catch (error) {
+              // If explicit path fails, try without path (might be embedded or use default)
+              console.warn('Failed to load WASM with explicit path, trying default:', error);
+              await init();
+            }
+          } finally {
+            // Clean up blob URL after a delay to ensure module is loaded
+            setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+          }
+        }
+        
+        // Now import @linera/client which should work after WASM is loaded
         const lineraClient = await import("@linera/client");
         Faucet = lineraClient.Faucet;
         Client = lineraClient.Client;
         Wallet = lineraClient.Wallet;
         Application = lineraClient.Application;
-        await new Promise(resolve => setTimeout(resolve, 300));
       } catch (error) {
+        console.error("WASM initialization error:", error);
         throw new Error(`Failed to initialize WASM: ${error instanceof Error ? error.message : "Unknown error"}`);
       }
     })();

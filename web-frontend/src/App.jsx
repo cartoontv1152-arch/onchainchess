@@ -53,9 +53,24 @@ function App({ chainId, appId, ownerId }) {
       console.log('📦 Result data:', result.data);
       console.log('📦 Result errors:', result.errors);
       
-      if (result.data?.createGame?.success) {
+      // Handle case where result.data might be a string (transaction hash) instead of object
+      let createGameData = result.data;
+      if (typeof result.data === 'string') {
+        console.warn('⚠️ Received string response instead of GraphQL object:', result.data);
+        // This might be a transaction hash - the operation was scheduled
+        createGameData = {
+          createGame: {
+            success: true,
+            message: "Game creation scheduled",
+            gameId: null
+          }
+        };
+      }
+      
+      if (createGameData?.createGame?.success || result.data?.createGame?.success) {
+        const gameResponse = createGameData?.createGame || result.data?.createGame;
         showMessage('Game creation scheduled! Processing operation...', 'success');
-        const gameId = result.data.createGame.gameId;
+        const gameId = gameResponse?.gameId;
         
         if (gameId) {
           setSelectedGameId(gameId);
@@ -105,11 +120,47 @@ function App({ chainId, appId, ownerId }) {
           }, 2000);
         }
       } else {
-        const errorMsg = result.data?.createGame?.message || 
-                        result.errors?.[0]?.message || 
-                        'Failed to create game';
-        console.error('❌ Create game failed:', errorMsg, result);
-        showMessage(errorMsg, 'error');
+        // Check if we got a string response (transaction hash) - treat as success
+        if (typeof result.data === 'string') {
+          console.log('✅ Received transaction hash, treating as success:', result.data);
+          showMessage('Game creation scheduled! Processing operation...', 'success');
+          // Start polling for the new game
+          let pollCount = 0;
+          const maxPolls = 15;
+          const pollInterval = setInterval(async () => {
+            pollCount++;
+            console.log(`🔄 Polling for new game (attempt ${pollCount}/${maxPolls})...`);
+            try {
+              if (refetchAvailableGames) {
+                const { data } = await refetchAvailableGames();
+                const games = data?.getAvailableGames || [];
+                const newGame = games.find(g => g.whitePlayer === account && !g.blackPlayer);
+                if (newGame) {
+                  console.log('✅ New game found!', newGame);
+                  clearInterval(pollInterval);
+                  setSelectedGameId(newGame.gameId);
+                  showMessage('Game created and confirmed!', 'success');
+                  return;
+                }
+              }
+              if (pollCount >= maxPolls) {
+                clearInterval(pollInterval);
+                showMessage('Operation may still be processing. Check the game list or try again.', 'warning');
+              }
+            } catch (error) {
+              console.error('❌ Error polling for game:', error);
+              if (pollCount >= maxPolls) {
+                clearInterval(pollInterval);
+              }
+            }
+          }, 2000);
+        } else {
+          const errorMsg = result.data?.createGame?.message || 
+                          result.errors?.[0]?.message || 
+                          'Failed to create game';
+          console.error('❌ Create game failed:', errorMsg, result);
+          showMessage(errorMsg, 'error');
+        }
       }
     } catch (error) {
       console.error('❌ Error creating game:', error);

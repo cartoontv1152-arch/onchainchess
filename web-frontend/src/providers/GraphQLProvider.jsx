@@ -66,8 +66,98 @@ function apolloClient(chainId, applicationId, port, host = 'localhost') {
     })
   );
 
+  // Custom fetch function to intercept and transform non-GraphQL responses
+  const customFetch = async (uri, options) => {
+    const response = await fetch(uri, options);
+    
+    // Clone the response so we can read it without consuming it
+    const clonedResponse = response.clone();
+    const text = await clonedResponse.text();
+    
+    // Check if response is a transaction hash (hex string, 64 chars)
+    const isTransactionHash = /^[0-9a-f]{64}$/i.test(text.trim());
+    
+    if (isTransactionHash) {
+      // Parse the GraphQL operation from the request body
+      let operationName = 'Unknown';
+      try {
+        const body = JSON.parse(options.body);
+        if (body.query) {
+          // Extract operation name from query
+          const match = body.query.match(/(?:mutation|query)\s+(\w+)/);
+          if (match) {
+            operationName = match[1];
+          }
+        }
+      } catch (e) {
+        // Ignore parsing errors
+      }
+      
+      console.log(`🔄 Transforming transaction hash response for ${operationName}:`, text.trim());
+      
+      // Create a proper GraphQL response
+      let graphqlResponse;
+      if (operationName === 'CreateGame') {
+        graphqlResponse = {
+          data: {
+            createGame: {
+              success: true,
+              message: "Game creation scheduled",
+              gameId: null
+            }
+          }
+        };
+      } else if (operationName === 'JoinGame') {
+        graphqlResponse = {
+          data: {
+            joinGame: {
+              success: true,
+              message: "Join game scheduled"
+            }
+          }
+        };
+      } else if (operationName === 'MakeMove') {
+        graphqlResponse = {
+          data: {
+            makeMove: {
+              success: true,
+              message: "Move scheduled"
+            }
+          }
+        };
+      } else if (operationName === 'ResignGame') {
+        graphqlResponse = {
+          data: {
+            resignGame: {
+              success: true,
+              message: "Resignation scheduled"
+            }
+          }
+        };
+      } else {
+        // Unknown operation, return as-is but wrapped
+        graphqlResponse = {
+          data: text.trim()
+        };
+      }
+      
+      // Return a new Response with the transformed JSON
+      return new Response(JSON.stringify(graphqlResponse), {
+        status: response.status,
+        statusText: response.statusText,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+    }
+    
+    // Not a transaction hash, return original response
+    return response;
+  };
+
   const httpLink = new HttpLink({
     uri: httpUrl,
+    fetch: customFetch,
   });
 
   const splitLink = split(
@@ -112,7 +202,7 @@ function apolloClient(chainId, applicationId, port, host = 'localhost') {
         fetchPolicy: 'cache-first',
       },
       mutate: {
-        errorPolicy: 'ignore',
+        errorPolicy: 'all',
       }
     },
   });
