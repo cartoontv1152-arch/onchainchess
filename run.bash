@@ -9,6 +9,9 @@ FAUCET_URL="${FAUCET_URL:-https://faucet.testnet-conway.linera.net}"
 SERVICE_PORT="${SERVICE_PORT:-8080}"
 FRONTEND_PORT="${FRONTEND_PORT:-5173}"
 
+# Hardcoded Owner ID from README for frontend (can be overridden via environment variable)
+FRONTEND_OWNER_ID="${FRONTEND_OWNER_ID:-0x62bda14cdcb5ee207ff27b60975283e35229424320a48ac10dc4b006a7478fa2}"
+
 export LINERA_DIR="${LINERA_DIR:-$SCRIPT_DIR}"
 export LINERA_WALLET="${LINERA_WALLET:-$HOME/.config/linera/wallet.json}"
 export LINERA_KEYSTORE="${LINERA_KEYSTORE:-$HOME/.config/linera/keystore.json}"
@@ -84,7 +87,7 @@ ENV_FILE="$SCRIPT_DIR/web-frontend/.env"
 cat > "$ENV_FILE" <<EOF
 VITE_CHAIN_ID=$CHAIN_ID
 VITE_APP_ID=$APP_ID
-VITE_OWNER_ID=${OWNER_ID:-}
+VITE_OWNER_ID=$FRONTEND_OWNER_ID
 VITE_PORT=$SERVICE_PORT
 VITE_HOST=localhost
 EOF
@@ -105,7 +108,7 @@ FRONTEND_PID=$!
 
 sleep 3
 echo "======================================"
-echo "Frontend URL: http://localhost:${FRONTEND_PORT}/${CHAIN_ID}?app=${APP_ID}&owner=${OWNER_ID}&port=${SERVICE_PORT}"
+echo "Frontend URL: http://localhost:${FRONTEND_PORT}/${CHAIN_ID}?app=${APP_ID}&owner=${FRONTEND_OWNER_ID}&port=${SERVICE_PORT}"
 echo "GraphQL URL : http://localhost:${SERVICE_PORT}/chains/${CHAIN_ID}/applications/${APP_ID}"
 echo "Frontend log: $SCRIPT_DIR/frontend.log"
 echo "Backend log : $SCRIPT_DIR/backend.log"

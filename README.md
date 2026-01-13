@@ -9,8 +9,11 @@ A fully on-chain chess game built on Linera blockchain for the Real-Time Markets
 
 📋 Deployment Summary:
   Chain ID:      f0e379379d5715d922c7da443db9c09ce8642111f8024b296f4ca894bde1cd1a
+
   Application ID: 3e324da7596aa2772fac866bb73b44581536ad96f35669949bc60813c9d96a25
+
   Owner ID:      0x62bda14cdcb5ee207ff27b60975283e35229424320a48ac10dc4b006a7478fa2
+  
   Module ID:     3e324da7596aa2772fac866bb73b44581536ad96f35669949bc60813c9d96a25
 
 ## 🎯 Overview
