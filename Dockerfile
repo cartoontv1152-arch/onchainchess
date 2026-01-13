@@ -1,4 +1,4 @@
-FROM rust:1.86-slim
+FROM rust:1.86
 
 SHELL ["bash", "-c"]
 

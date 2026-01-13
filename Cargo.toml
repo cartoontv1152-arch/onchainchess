@@ -8,7 +8,8 @@ edition = "2021"
 test = []
 
 [dependencies]
-async-graphql = { version = "7.0", default-features = false }
+async-graphql = { version = "7.0.17", default-features = false }
+async-graphql-value = "=7.0.17"
 futures = "0.3"
 linera-sdk = { git = "https://github.com/linera-io/linera-protocol.git", rev = "524dcf390d0f532253edbc8664bb7189cb43ab61" }
 linera-views = { git = "https://github.com/linera-io/linera-protocol.git", rev = "524dcf390d0f532253edbc8664bb7189cb43ab61" }
