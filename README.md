@@ -2,6 +2,8 @@
 
 A fully on-chain chess game built on Linera blockchain for the Real-Time Markets Wavehack.
 
+yt demo video --- https://youtu.be/9DMx1LZitKY
+
 
 ============================================
 🎉 Deployment Complete!
