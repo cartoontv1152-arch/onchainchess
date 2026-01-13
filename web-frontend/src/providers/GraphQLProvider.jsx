@@ -4,7 +4,9 @@ import {
   HttpLink,
   InMemoryCache,
   split,
+  from,
 } from "@apollo/client";
+import { setContext } from "@apollo/client/link/context";
 import React from "react";
 import { GraphQLWsLink } from "@apollo/client/link/subscriptions";
 import { createClient } from "graphql-ws";
@@ -68,16 +70,36 @@ function apolloClient(chainId, applicationId, port, host = 'localhost') {
 
   // Custom fetch function to intercept and transform non-GraphQL responses
   const customFetch = async (uri, options) => {
+    console.log('🔍 Custom fetch called for:', uri);
     const response = await fetch(uri, options);
     
     // Clone the response so we can read it without consuming it
     const clonedResponse = response.clone();
     const text = await clonedResponse.text();
+    console.log('🔍 Raw response text:', text.substring(0, 100));
     
     // Check if response is a transaction hash (hex string, 64 chars)
-    const isTransactionHash = /^[0-9a-f]{64}$/i.test(text.trim());
+    const trimmedText = text.trim();
+    const isTransactionHash = /^[0-9a-f]{64}$/i.test(trimmedText);
     
-    if (isTransactionHash) {
+    // Also check if it's JSON with a string data field containing a hash
+    let jsonData = null;
+    let hashFromJson = null;
+    try {
+      jsonData = JSON.parse(trimmedText);
+      if (jsonData && typeof jsonData === 'object' && typeof jsonData.data === 'string') {
+        hashFromJson = jsonData.data;
+        if (/^[0-9a-f]{64}$/i.test(hashFromJson)) {
+          console.log('🔍 Found transaction hash in JSON data field:', hashFromJson);
+        }
+      }
+    } catch (e) {
+      // Not JSON, that's fine
+    }
+    
+    if (isTransactionHash || hashFromJson) {
+      const hash = hashFromJson || trimmedText;
+      
       // Parse the GraphQL operation from the request body
       let operationName = 'Unknown';
       try {
@@ -90,10 +112,10 @@ function apolloClient(chainId, applicationId, port, host = 'localhost') {
           }
         }
       } catch (e) {
-        // Ignore parsing errors
+        console.warn('Could not parse request body:', e);
       }
       
-      console.log(`🔄 Transforming transaction hash response for ${operationName}:`, text.trim());
+      console.log(`🔄 Transforming transaction hash response for ${operationName}:`, hash);
       
       // Create a proper GraphQL response
       let graphqlResponse;
@@ -137,9 +159,11 @@ function apolloClient(chainId, applicationId, port, host = 'localhost') {
       } else {
         // Unknown operation, return as-is but wrapped
         graphqlResponse = {
-          data: text.trim()
+          data: hash
         };
       }
+      
+      console.log('✅ Returning transformed GraphQL response:', graphqlResponse);
       
       // Return a new Response with the transformed JSON
       return new Response(JSON.stringify(graphqlResponse), {
@@ -152,6 +176,7 @@ function apolloClient(chainId, applicationId, port, host = 'localhost') {
     }
     
     // Not a transaction hash, return original response
+    console.log('ℹ️ Response is not a transaction hash, returning as-is');
     return response;
   };
 
@@ -159,6 +184,66 @@ function apolloClient(chainId, applicationId, port, host = 'localhost') {
     uri: httpUrl,
     fetch: customFetch,
   });
+
+  // Apollo Link to transform responses after fetch but before cache
+  const responseTransformLink = new (class {
+    request(operation, forward) {
+      return forward(operation).map((response) => {
+        // Check if data is a string (transaction hash)
+        if (response && typeof response.data === 'string') {
+          const hash = response.data;
+          const operationName = operation.operationName;
+          console.log(`🔄 Apollo Link: Transforming string data for ${operationName}:`, hash);
+          
+          if (operationName === 'CreateGame') {
+            return {
+              ...response,
+              data: {
+                createGame: {
+                  success: true,
+                  message: "Game creation scheduled",
+                  gameId: null
+                }
+              }
+            };
+          } else if (operationName === 'JoinGame') {
+            return {
+              ...response,
+              data: {
+                joinGame: {
+                  success: true,
+                  message: "Join game scheduled"
+                }
+              }
+            };
+          } else if (operationName === 'MakeMove') {
+            return {
+              ...response,
+              data: {
+                makeMove: {
+                  success: true,
+                  message: "Move scheduled"
+                }
+              }
+            };
+          } else if (operationName === 'ResignGame') {
+            return {
+              ...response,
+              data: {
+                resignGame: {
+                  success: true,
+                  message: "Resignation scheduled"
+                }
+              }
+            };
+          }
+        }
+        return response;
+      });
+    }
+  })();
+
+  const httpLinkWithTransform = from([responseTransformLink, httpLink]);
 
   const splitLink = split(
     ({ query }) => {
@@ -169,7 +254,7 @@ function apolloClient(chainId, applicationId, port, host = 'localhost') {
       );
     },
     wsLink,
-    httpLink
+    httpLinkWithTransform
   );
   
   return new ApolloClient({
@@ -203,6 +288,7 @@ function apolloClient(chainId, applicationId, port, host = 'localhost') {
       },
       mutate: {
         errorPolicy: 'all',
+        fetchPolicy: 'no-cache',
       }
     },
   });
