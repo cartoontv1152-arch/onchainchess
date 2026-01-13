@@ -4,16 +4,9 @@ let wasmInitPromise: Promise<void> | null = null;
 async function ensureLineraWasm() {
   if (!wasmInitPromise) {
     wasmInitPromise = (async () => {
-      const wasmIndexUrl = new URL(
-        "/node_modules/@linera/client/dist/wasm/index.js",
-        window.location.origin
-      ).toString();
+      const wasmIndexUrl = new URL("/wasm/index.js", window.location.origin).toString();
       const init = (await import(/* @vite-ignore */ wasmIndexUrl)).default;
-      const wasmUrl = new URL(
-        "/node_modules/@linera/client/dist/wasm/index_bg.wasm",
-        window.location.origin
-      ).toString();
-      await init(wasmUrl);
+      await init();
     })();
   }
   return wasmInitPromise;

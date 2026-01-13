@@ -1,7 +1,7 @@
 target/
 Cargo.lock
 *.wasm
-.env
+
 .DS_Store
 node_modules/
 web-frontend/dist/

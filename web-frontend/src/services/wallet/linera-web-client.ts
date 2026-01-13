@@ -1,77 +1,33 @@
 /**
  * Linera Web Client Integration
  * This uses @linera/client for direct connection to Linera network
+ * 
+ * IMPORTANT: WASM must be initialized BEFORE importing @linera/client classes
  */
 
-import { Faucet, Client, Wallet, Application } from "@linera/client";
+// We'll import these classes dynamically after WASM is initialized
+// Using any for now since we're dynamically importing
+let Faucet: any;
+let Client: any;
+let Wallet: any;
+let Application: any;
 
 let wasmInitPromise: Promise<void> | null = null;
 async function ensureLineraWasm() {
   if (!wasmInitPromise) {
     wasmInitPromise = (async () => {
-      console.log("🔧 Starting WASM initialization...");
-      
       try {
-        // Try loading from public directory first (for Vite compatibility)
-        const wasmIndexUrl = new URL(
-          "/wasm/index.js",
-          window.location.origin
-        ).toString();
-        
-        console.log("📦 Loading WASM module from:", wasmIndexUrl);
-        const wasmModule = await import(/* @vite-ignore */ wasmIndexUrl);
-        
-        // The init function might be the default export or a named export
-        const init = wasmModule.default || wasmModule.init || wasmModule;
-        
-        if (typeof init !== 'function') {
-          throw new Error(`WASM init is not a function. Got: ${typeof init}`);
-        }
-        
-        const wasmUrl = new URL(
-          "/wasm/index_bg.wasm",
-          window.location.origin
-        ).toString();
-        
-        console.log("📦 Initializing WASM with:", wasmUrl);
-        const initResult = await init(wasmUrl);
-        console.log("✅ WASM initialization function completed, result:", initResult);
-        
-        // Wait a bit to ensure WASM is fully loaded and check if it's actually initialized
-        await new Promise(resolve => setTimeout(resolve, 200));
-        
-        // Verify WASM module is accessible
-        if (!wasmModule.wasm && !(window as any).__wbindgen_malloc) {
-          console.warn("⚠️ WASM module may not be fully initialized");
-        } else {
-          console.log("✅ WASM module verified as initialized");
-        }
+        const wasmIndexUrl = new URL("/wasm/index.js", window.location.origin).toString();
+        const init = (await import(/* @vite-ignore */ wasmIndexUrl)).default;
+        await init();
+        const lineraClient = await import("@linera/client");
+        Faucet = lineraClient.Faucet;
+        Client = lineraClient.Client;
+        Wallet = lineraClient.Wallet;
+        Application = lineraClient.Application;
+        await new Promise(resolve => setTimeout(resolve, 300));
       } catch (error) {
-        console.error("❌ Failed to load WASM from public directory:", error);
-        // Fallback to node_modules path
-        try {
-          console.log("🔄 Trying fallback: node_modules path");
-          const wasmIndexUrl = new URL(
-            "/node_modules/@linera/client/dist/wasm/index.js",
-            window.location.origin
-          ).toString();
-          const wasmModule = await import(/* @vite-ignore */ wasmIndexUrl);
-          const init = wasmModule.default || wasmModule.init || wasmModule;
-          
-          if (typeof init !== 'function') {
-            throw new Error(`WASM init is not a function in fallback. Got: ${typeof init}`);
-          }
-          
-          const wasmUrl = new URL(
-            "/node_modules/@linera/client/dist/wasm/index_bg.wasm",
-            window.location.origin
-          ).toString();
-          await init(wasmUrl);
-          console.log("✅ WASM initialized from node_modules (fallback)");
-        } catch (fallbackError) {
-          console.error("❌ Both WASM initialization methods failed:", fallbackError);
-          throw new Error(`Failed to initialize WASM: ${error.message}. Fallback also failed: ${fallbackError.message}`);
-        }
+        throw new Error(`Failed to initialize WASM: ${error instanceof Error ? error.message : "Unknown error"}`);
       }
     })();
   }
@@ -79,9 +35,9 @@ async function ensureLineraWasm() {
 }
 
 export interface LineraWebClientProvider {
-  client: Client;
-  wallet: Wallet;
-  faucet: Faucet;
+  client: any;
+  wallet: any;
+  faucet: any;
   address: string;
   chainId: string;
 }
@@ -163,7 +119,7 @@ export class LineraWebClient {
     }
   }
 
-  async setApplication(appId: string): Promise<Application> {
+  async setApplication(appId: string): Promise<any> {
     if (!this.provider) {
       throw new Error("Not connected to Linera Web Client");
     }

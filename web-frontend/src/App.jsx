@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useWallet, WalletConnector } from './providers';
-import { useGame, useCreateGame, useMakeMove, useResignGame } from './services/chessOperations';
+import { useGame, useCreateGame, useMakeMove, useResignGame, useAvailableGames } from './services/chessOperations';
 import ChessBoard from './components/ChessBoard';
 import GameList from './components/GameList';
 import MoveHistory from './components/MoveHistory';
@@ -18,6 +18,7 @@ function App({ chainId, appId, ownerId }) {
   const { createGame, loading: createLoading } = useCreateGame();
   const { makeMove, loading: moveLoading } = useMakeMove();
   const { resignGame, loading: resignLoading } = useResignGame();
+  const { refetch: refetchAvailableGames } = useAvailableGames();
 
   useEffect(() => {
     if (selectedGameId && refetchGame) {
@@ -44,24 +45,76 @@ function App({ chainId, appId, ownerId }) {
     }
 
     try {
+      console.log('🎮 Creating game with account:', account);
+      console.log('📋 Account type:', typeof account, 'Length:', account?.length);
+      
       const result = await createGame(account);
+      console.log('📦 Create game result:', result);
+      console.log('📦 Result data:', result.data);
+      console.log('📦 Result errors:', result.errors);
+      
       if (result.data?.createGame?.success) {
-        showMessage('Game created successfully!', 'success');
+        showMessage('Game creation scheduled! Processing operation...', 'success');
         const gameId = result.data.createGame.gameId;
+        
         if (gameId) {
           setSelectedGameId(gameId);
+          showMessage('Game created successfully!', 'success');
         } else {
-          // Poll for new game
-          setTimeout(() => {
-            refetchGame();
+          // Operation was scheduled but gameId not returned yet
+          // Operations are async - they need to be processed by the contract
+          showMessage('Game creation scheduled. Waiting for operation to process...', 'info');
+          
+          // Poll for new games - operations need time to be processed
+          let pollCount = 0;
+          const maxPolls = 15; // Poll for up to 30 seconds (15 * 2s)
+          
+          const pollInterval = setInterval(async () => {
+            pollCount++;
+            console.log(`🔄 Polling for new game (attempt ${pollCount}/${maxPolls})...`);
+            
+            try {
+              // Refetch available games to see if a new one appeared
+              if (refetchAvailableGames) {
+                const { data } = await refetchAvailableGames();
+                const games = data?.getAvailableGames || [];
+                console.log(`📊 Found ${games.length} available games`);
+                
+                // Check if a new game was created by this account
+                const newGame = games.find(g => g.whitePlayer === account && !g.blackPlayer);
+                if (newGame) {
+                  console.log('✅ New game found!', newGame);
+                  clearInterval(pollInterval);
+                  setSelectedGameId(newGame.gameId);
+                  showMessage('Game created and confirmed!', 'success');
+                  return;
+                }
+              }
+              
+              if (pollCount >= maxPolls) {
+                clearInterval(pollInterval);
+                showMessage('Operation may still be processing. Check the game list or try again.', 'warning');
+                console.warn('⚠️ Game creation polling timed out');
+              }
+            } catch (error) {
+              console.error('❌ Error polling for game:', error);
+              if (pollCount >= maxPolls) {
+                clearInterval(pollInterval);
+              }
+            }
           }, 2000);
         }
       } else {
-        showMessage(result.data?.createGame?.message || 'Failed to create game', 'error');
+        const errorMsg = result.data?.createGame?.message || 
+                        result.errors?.[0]?.message || 
+                        'Failed to create game';
+        console.error('❌ Create game failed:', errorMsg, result);
+        showMessage(errorMsg, 'error');
       }
     } catch (error) {
-      console.error('Error creating game:', error);
-      showMessage('Error creating game: ' + error.message, 'error');
+      console.error('❌ Error creating game:', error);
+      const errorMsg = error.message || error.toString() || 'Unknown error';
+      showMessage('Error creating game: ' + errorMsg, 'error');
     }
   };
 
