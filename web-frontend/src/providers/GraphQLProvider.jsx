@@ -189,56 +189,63 @@ function apolloClient(chainId, applicationId, port, host = 'localhost') {
   const responseTransformLink = new (class {
     request(operation, forward) {
       return forward(operation).map((response) => {
+        // Ensure errors is always an array
+        if (response && !Array.isArray(response.errors)) {
+          response.errors = response.errors ? [response.errors] : [];
+        }
+        
         // Check if data is a string (transaction hash)
         if (response && typeof response.data === 'string') {
           const hash = response.data;
           const operationName = operation.operationName;
           console.log(`🔄 Apollo Link: Transforming string data for ${operationName}:`, hash);
           
+          let transformedData = null;
           if (operationName === 'CreateGame') {
-            return {
-              ...response,
-              data: {
-                createGame: {
-                  success: true,
-                  message: "Game creation scheduled",
-                  gameId: null
-                }
+            transformedData = {
+              createGame: {
+                success: true,
+                message: "Game creation scheduled",
+                gameId: null
               }
             };
           } else if (operationName === 'JoinGame') {
-            return {
-              ...response,
-              data: {
-                joinGame: {
-                  success: true,
-                  message: "Join game scheduled"
-                }
+            transformedData = {
+              joinGame: {
+                success: true,
+                message: "Join game scheduled"
               }
             };
           } else if (operationName === 'MakeMove') {
-            return {
-              ...response,
-              data: {
-                makeMove: {
-                  success: true,
-                  message: "Move scheduled"
-                }
+            transformedData = {
+              makeMove: {
+                success: true,
+                message: "Move scheduled"
               }
             };
           } else if (operationName === 'ResignGame') {
-            return {
-              ...response,
-              data: {
-                resignGame: {
-                  success: true,
-                  message: "Resignation scheduled"
-                }
+            transformedData = {
+              resignGame: {
+                success: true,
+                message: "Resignation scheduled"
               }
             };
           }
+          
+          if (transformedData) {
+            return {
+              data: transformedData,
+              errors: [],
+              extensions: response.extensions || {},
+            };
+          }
         }
-        return response;
+        
+        // Ensure errors is an array for all responses
+        return {
+          ...response,
+          errors: Array.isArray(response.errors) ? response.errors : (response.errors ? [response.errors] : []),
+        };
       });
     }
   })();
