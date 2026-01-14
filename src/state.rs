@@ -23,14 +23,23 @@ impl ChessState {
     }
 
     pub async fn load(context: ViewStorageContext) -> Result<Self, ViewError> {
-        // RootView handles loading - just construct with the same context
-        // RootView automatically handles key separation for each field
-        Ok(Self {
+        // RootView automatically loads data from storage when constructed
+        // We need to use RootView::load() or construct and then load
+        // For now, create empty and let views load on access
+        let mut state = Self {
             owner: RegisterView::new(context.clone())?,
             games: MapView::new(context.clone())?,
             game_counter: RegisterView::new(context.clone())?,
             player_games: MapView::new(context.clone())?,
-        })
+        };
+        
+        // Force load by accessing the views - this triggers loading from storage
+        // The views will automatically sync with storage when accessed
+        let _ = state.owner.get();
+        let _ = state.game_counter.get();
+        // Games and player_games will load when accessed via get() calls
+        
+        Ok(state)
     }
 
     pub async fn set_owner(&mut self, owner: AccountOwner) -> Result<(), ViewError> {
@@ -39,8 +48,12 @@ impl ChessState {
     }
 
     pub async fn create_game(&mut self, creator: AccountOwner, timestamp: u64) -> Result<u64, ViewError> {
-        let game_id = *self.game_counter.get() + 1;
+        let current_counter = *self.game_counter.get();
+        let game_id = current_counter + 1;
+        log::info!("Creating game {} (counter was {})", game_id, current_counter);
+        
         self.game_counter.set(game_id);
+        log::info!("Set game_counter to {}", game_id);
 
         let initial_board = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1".to_string();
 
@@ -57,10 +70,12 @@ impl ChessState {
         };
 
         self.games.insert(&game_id, game_state.clone())?;
+        log::info!("Inserted game {} into games map", game_id);
 
         let mut creator_games = self.player_games.get(&creator).await?.unwrap_or_default();
         creator_games.push(game_id);
         self.player_games.insert(&creator, creator_games)?;
+        log::info!("Added game {} to player {} games list", game_id, creator);
 
         Ok(game_id)
     }

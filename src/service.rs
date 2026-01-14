@@ -17,7 +17,6 @@ impl WithServiceAbi for ChessService {
 }
 
 pub struct ChessService {
-    state: Arc<Mutex<ChessState>>,
     runtime: Arc<ServiceRuntime<Self>>,
 }
 
@@ -25,29 +24,40 @@ impl Service for ChessService {
     type Parameters = ();
 
     async fn new(runtime: ServiceRuntime<Self>) -> Self {
-        let context = runtime.root_view_storage_context();
-        let state = match ChessState::load(context.clone()).await {
-            Ok(state) => state,
-            Err(e) => {
-                log::error!("Failed to load ChessState: {:?}", e);
-                ChessState::create_empty(context)
-            }
-        };
         Self {
-            state: Arc::new(Mutex::new(state)),
             runtime: Arc::new(runtime),
         }
     }
 
     async fn handle_query(&self, request: Request) -> Response {
+        // Reload state from storage on each query to get latest updates from contract
+        // This ensures we always have fresh data from the blockchain
+        let context = self.runtime.root_view_storage_context();
+        log::info!("Service: Loading state from storage context");
+        let state = match ChessState::load(context.clone()).await {
+            Ok(state) => {
+                // Access game_counter to trigger loading from storage
+                let counter = *state.game_counter.get();
+                log::info!("Service: Loaded state, game_counter = {}", counter);
+                state
+            },
+            Err(e) => {
+                log::error!("Failed to reload ChessState: {:?}", e);
+                ChessState::create_empty(context)
+            }
+        };
+        
+        // Create a fresh Arc with the reloaded state for this query
+        let state_arc = Arc::new(Mutex::new(state));
+        
         let schema = Schema::build(
             QueryRoot {
-                state: Arc::clone(&self.state),
+                state: Arc::clone(&state_arc),
                 runtime: Arc::clone(&self.runtime),
             },
             MutationRoot {
                 runtime: Arc::clone(&self.runtime),
-                state: Arc::clone(&self.state),
+                state: Arc::clone(&state_arc),
             },
             async_graphql::EmptySubscription,
         )
@@ -100,7 +110,9 @@ impl QueryRoot {
         game_id: u64,
     ) -> Result<Option<GameState>, async_graphql::Error> {
         let state = self.state.lock().await;
-        Ok(state.get_game(game_id).await?)
+        let result = state.get_game(game_id).await?;
+        log::info!("Query get_game({}): {:?}", game_id, result.as_ref().map(|g| g.game_id));
+        Ok(result)
     }
 
     async fn get_player_games(
@@ -109,7 +121,9 @@ impl QueryRoot {
         player: AccountOwner,
     ) -> Result<Vec<GameState>, async_graphql::Error> {
         let state = self.state.lock().await;
-        Ok(state.get_player_games(&player).await?)
+        let result = state.get_player_games(&player).await?;
+        log::info!("Query get_player_games({}): found {} games", player, result.len());
+        Ok(result)
     }
 
     async fn get_available_games(
@@ -117,7 +131,9 @@ impl QueryRoot {
         _ctx: &async_graphql::Context<'_>,
     ) -> Result<Vec<GameState>, async_graphql::Error> {
         let state = self.state.lock().await;
-        Ok(state.get_available_games().await?)
+        let result = state.get_available_games().await?;
+        log::info!("Query get_available_games(): found {} games", result.len());
+        Ok(result)
     }
 }
 

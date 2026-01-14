@@ -15,6 +15,18 @@ function App({ chainId, appId, ownerId }) {
   const [messageType, setMessageType] = useState(null);
 
   const { game, loading: gameLoading, refetch: refetchGame } = useGame(selectedGameId);
+  
+  // Helper function to refetch a specific game by ID
+  const refetchGameById = async (gameId) => {
+    if (!gameId) return null;
+    try {
+      const { data } = await refetchGame();
+      return data?.getGame;
+    } catch (error) {
+      console.error(`Error fetching game ${gameId}:`, error);
+      return null;
+    }
+  };
   const { createGame, loading: createLoading } = useCreateGame();
   const { makeMove, loading: moveLoading } = useMakeMove();
   const { resignGame, loading: resignLoading } = useResignGame();
@@ -48,8 +60,13 @@ function App({ chainId, appId, ownerId }) {
     try {
       console.log('🎮 Creating game with account:', account);
       console.log('📋 Account type:', typeof account, 'Length:', account?.length);
+      console.log('📋 Full account value:', JSON.stringify(account));
       
-      const result = await createGame(account);
+      // Ensure account is a string and properly formatted
+      const accountString = typeof account === 'string' ? account : String(account);
+      console.log('📋 Account string to send:', accountString);
+      
+      const result = await createGame(accountString);
       console.log('📦 Create game result:', result);
       console.log('📦 Result data:', result.data);
       console.log('📦 Result errors:', result.errors);
@@ -84,16 +101,15 @@ function App({ chainId, appId, ownerId }) {
           // Poll for new games - operations need time to be processed
           let pollCount = 0;
           const maxPolls = 30; // Poll for up to 60 seconds (30 * 2s)
+          let lastGameIdChecked = 0;
           
           const pollInterval = setInterval(async () => {
             pollCount++;
             console.log(`🔄 Polling for new game (attempt ${pollCount}/${maxPolls})...`);
             
             try {
-              // Check both available games and player games
+              // Strategy 1: Check player games (most reliable)
               let newGame = null;
-              
-              // First check player games (more reliable - game is added to player's list immediately)
               if (refetchPlayerGames && account) {
                 const { data: playerData } = await refetchPlayerGames();
                 const playerGames = playerData?.getPlayerGames || [];
@@ -101,7 +117,7 @@ function App({ chainId, appId, ownerId }) {
                 
                 // Find the most recent game created by this account (waiting for player)
                 const recentGames = playerGames
-                  .filter(g => g.whitePlayer === account && !g.blackPlayer && g.status === 'WaitingForPlayer')
+                  .filter(g => g.whitePlayer?.toLowerCase() === account?.toLowerCase() && !g.blackPlayer && g.status === 'WaitingForPlayer')
                   .sort((a, b) => (b.gameId || 0) - (a.gameId || 0));
                 
                 if (recentGames.length > 0) {
@@ -110,13 +126,13 @@ function App({ chainId, appId, ownerId }) {
                 }
               }
               
-              // Also check available games as fallback
+              // Strategy 2: Check available games as fallback
               if (!newGame && refetchAvailableGames) {
                 const { data: availableData } = await refetchAvailableGames();
                 const availableGames = availableData?.getAvailableGames || [];
                 console.log(`📊 Found ${availableGames.length} available games`);
                 
-                newGame = availableGames.find(g => g.whitePlayer === account && !g.blackPlayer);
+                newGame = availableGames.find(g => g.whitePlayer?.toLowerCase() === account?.toLowerCase() && !g.blackPlayer);
                 if (newGame) {
                   console.log('✅ New game found in available games!', newGame);
                 }
@@ -131,8 +147,11 @@ function App({ chainId, appId, ownerId }) {
               
               if (pollCount >= maxPolls) {
                 clearInterval(pollInterval);
-                showMessage('Operation may still be processing. Check the game list or try again.', 'warning');
+                showMessage('Operation may still be processing. Try querying game ID 1 directly using the GraphQL queries in GRAPHQL_QUERIES.md', 'warning');
                 console.warn('⚠️ Game creation polling timed out');
+                console.warn('⚠️ The operation was scheduled but may not have been processed yet.');
+                console.warn('⚠️ Account used:', account);
+                console.warn('⚠️ Try querying game ID 1 directly: See GRAPHQL_QUERIES.md for queries');
               }
             } catch (error) {
               console.error('❌ Error polling for game:', error);

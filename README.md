@@ -70,6 +70,19 @@ OnChain Chess is a decentralized chess game where all moves are stored and valid
 5. **[WALLET_SETUP_GUIDE.md](WALLET_SETUP_GUIDE.md)**
    - Detailed wallet setup for all wallet types
 
+6. **[GRAPHQL_QUERIES.md](GRAPHQL_QUERIES.md)** ⭐ **For Debugging!**
+   - GraphQL queries to check if games are created
+   - How to verify game status
+   - Troubleshooting game creation issues
+
+7. **[TEST_QUERIES.md](TEST_QUERIES.md)** ⭐ **PowerShell Test Commands!**
+   - Ready-to-use PowerShell commands to test the backend
+   - Copy-paste queries for your current setup
+
+8. **[FIX_SUMMARY.md](FIX_SUMMARY.md)** ⭐ **Recent Fixes!**
+   - Summary of fixes applied
+   - What changed and why
+
 ### Prerequisites
 
 - **Rust**: Latest stable version

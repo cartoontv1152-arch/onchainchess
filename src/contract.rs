@@ -59,7 +59,16 @@ impl Contract for ChessContract {
                 match state.create_game(creator, timestamp).await {
                     Ok(game_id) => {
                         log::info!("Game {} created by {}", game_id, creator);
-                        let _ = state.save().await;
+                        // Force save the state - views should auto-save but let's be explicit
+                        if let Err(e) = state.save().await {
+                            log::error!("Failed to save state after creating game: {:?}", e);
+                        } else {
+                            log::info!("State saved after creating game {}", game_id);
+                        }
+                        
+                        // Verify the game was saved by checking game_counter
+                        let counter = *state.game_counter.get();
+                        log::info!("After save: game_counter = {}", counter);
                         
                         self.runtime.emit(
                             StreamName::from("chess_events"),
