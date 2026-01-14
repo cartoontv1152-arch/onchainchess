@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useWallet, WalletConnector } from './providers';
-import { useGame, useCreateGame, useMakeMove, useResignGame, useAvailableGames } from './services/chessOperations';
+import { useGame, useCreateGame, useMakeMove, useResignGame, useAvailableGames, usePlayerGames } from './services/chessOperations';
 import ChessBoard from './components/ChessBoard';
 import GameList from './components/GameList';
 import MoveHistory from './components/MoveHistory';
@@ -19,6 +19,7 @@ function App({ chainId, appId, ownerId }) {
   const { makeMove, loading: moveLoading } = useMakeMove();
   const { resignGame, loading: resignLoading } = useResignGame();
   const { refetch: refetchAvailableGames } = useAvailableGames();
+  const { refetch: refetchPlayerGames } = usePlayerGames(account);
 
   useEffect(() => {
     if (selectedGameId && refetchGame) {
@@ -82,28 +83,50 @@ function App({ chainId, appId, ownerId }) {
           
           // Poll for new games - operations need time to be processed
           let pollCount = 0;
-          const maxPolls = 15; // Poll for up to 30 seconds (15 * 2s)
+          const maxPolls = 30; // Poll for up to 60 seconds (30 * 2s)
           
           const pollInterval = setInterval(async () => {
             pollCount++;
             console.log(`🔄 Polling for new game (attempt ${pollCount}/${maxPolls})...`);
             
             try {
-              // Refetch available games to see if a new one appeared
-              if (refetchAvailableGames) {
-                const { data } = await refetchAvailableGames();
-                const games = data?.getAvailableGames || [];
-                console.log(`📊 Found ${games.length} available games`);
+              // Check both available games and player games
+              let newGame = null;
+              
+              // First check player games (more reliable - game is added to player's list immediately)
+              if (refetchPlayerGames && account) {
+                const { data: playerData } = await refetchPlayerGames();
+                const playerGames = playerData?.getPlayerGames || [];
+                console.log(`📊 Found ${playerGames.length} player games`);
                 
-                // Check if a new game was created by this account
-                const newGame = games.find(g => g.whitePlayer === account && !g.blackPlayer);
-                if (newGame) {
-                  console.log('✅ New game found!', newGame);
-                  clearInterval(pollInterval);
-                  setSelectedGameId(newGame.gameId);
-                  showMessage('Game created and confirmed!', 'success');
-                  return;
+                // Find the most recent game created by this account (waiting for player)
+                const recentGames = playerGames
+                  .filter(g => g.whitePlayer === account && !g.blackPlayer && g.status === 'WaitingForPlayer')
+                  .sort((a, b) => (b.gameId || 0) - (a.gameId || 0));
+                
+                if (recentGames.length > 0) {
+                  newGame = recentGames[0];
+                  console.log('✅ New game found in player games!', newGame);
                 }
+              }
+              
+              // Also check available games as fallback
+              if (!newGame && refetchAvailableGames) {
+                const { data: availableData } = await refetchAvailableGames();
+                const availableGames = availableData?.getAvailableGames || [];
+                console.log(`📊 Found ${availableGames.length} available games`);
+                
+                newGame = availableGames.find(g => g.whitePlayer === account && !g.blackPlayer);
+                if (newGame) {
+                  console.log('✅ New game found in available games!', newGame);
+                }
+              }
+              
+              if (newGame) {
+                clearInterval(pollInterval);
+                setSelectedGameId(newGame.gameId);
+                showMessage('Game created and confirmed!', 'success');
+                return;
               }
               
               if (pollCount >= maxPolls) {
@@ -126,23 +149,50 @@ function App({ chainId, appId, ownerId }) {
           showMessage('Game creation scheduled! Processing operation...', 'success');
           // Start polling for the new game
           let pollCount = 0;
-          const maxPolls = 15;
+          const maxPolls = 30; // Poll for up to 60 seconds (30 * 2s)
           const pollInterval = setInterval(async () => {
             pollCount++;
             console.log(`🔄 Polling for new game (attempt ${pollCount}/${maxPolls})...`);
             try {
-              if (refetchAvailableGames) {
-                const { data } = await refetchAvailableGames();
-                const games = data?.getAvailableGames || [];
-                const newGame = games.find(g => g.whitePlayer === account && !g.blackPlayer);
-                if (newGame) {
-                  console.log('✅ New game found!', newGame);
-                  clearInterval(pollInterval);
-                  setSelectedGameId(newGame.gameId);
-                  showMessage('Game created and confirmed!', 'success');
-                  return;
+              // Check both available games and player games
+              let newGame = null;
+              
+              // First check player games (more reliable - game is added to player's list immediately)
+              if (refetchPlayerGames && account) {
+                const { data: playerData } = await refetchPlayerGames();
+                const playerGames = playerData?.getPlayerGames || [];
+                console.log(`📊 Found ${playerGames.length} player games`);
+                
+                // Find the most recent game created by this account (waiting for player)
+                const recentGames = playerGames
+                  .filter(g => g.whitePlayer === account && !g.blackPlayer && g.status === 'WaitingForPlayer')
+                  .sort((a, b) => (b.gameId || 0) - (a.gameId || 0));
+                
+                if (recentGames.length > 0) {
+                  newGame = recentGames[0];
+                  console.log('✅ New game found in player games!', newGame);
                 }
               }
+              
+              // Also check available games as fallback
+              if (!newGame && refetchAvailableGames) {
+                const { data: availableData } = await refetchAvailableGames();
+                const availableGames = availableData?.getAvailableGames || [];
+                console.log(`📊 Found ${availableGames.length} available games`);
+                
+                newGame = availableGames.find(g => g.whitePlayer === account && !g.blackPlayer);
+                if (newGame) {
+                  console.log('✅ New game found in available games!', newGame);
+                }
+              }
+              
+              if (newGame) {
+                clearInterval(pollInterval);
+                setSelectedGameId(newGame.gameId);
+                showMessage('Game created and confirmed!', 'success');
+                return;
+              }
+              
               if (pollCount >= maxPolls) {
                 clearInterval(pollInterval);
                 showMessage('Operation may still be processing. Check the game list or try again.', 'warning');
@@ -278,7 +328,6 @@ function App({ chainId, appId, ownerId }) {
                   }}
                 />
                 <div className="wallet-help">
-                  <p><strong>💡 Tip:</strong> Linera Web Client requires no installation - just click "Connect Web Client"!</p>
                   <p>For detailed wallet setup, see <code>WALLET_SETUP_GUIDE.md</code></p>
                 </div>
               </div>
