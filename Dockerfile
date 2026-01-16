@@ -6,7 +6,9 @@ RUN apt-get update && apt-get install -y \
     pkg-config \
     protobuf-compiler \
     clang \
-    make
+    make \
+    tzdata \
+    ntpdate
 
 RUN cargo install --locked linera-service@0.15.7 linera-storage-service@0.15.7
 

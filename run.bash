@@ -4,6 +4,27 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Sync container time with host/NTP to avoid blockchain timestamp errors
+echo "Syncing container time..."
+SYNC_SUCCESS=false
+if command -v ntpdate >/dev/null 2>&1; then
+    # Try to sync with NTP servers (requires privileged mode or CAP_SYS_TIME)
+    if ntpdate -s pool.ntp.org 2>/dev/null; then
+        SYNC_SUCCESS=true
+        echo "Time synced via NTP"
+    fi
+fi
+# Also sync with host time if /etc/localtime is mounted
+if [ -f /etc/localtime ]; then
+    echo "Using host timezone: $(cat /etc/timezone 2>/dev/null || echo 'unknown')"
+fi
+echo "Current container time: $(date)"
+# If time sync failed, add a small delay to ensure we're not too far ahead
+if [ "$SYNC_SUCCESS" = false ]; then
+    echo "Warning: Time sync may have failed. Adding delay to avoid timestamp issues..."
+    sleep 2
+fi
+
 # Configurable defaults (can be overridden via environment variables)
 FAUCET_URL="${FAUCET_URL:-https://faucet.testnet-conway.linera.net}"
 SERVICE_PORT="${SERVICE_PORT:-8080}"
