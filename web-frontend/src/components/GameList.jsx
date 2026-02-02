@@ -11,14 +11,47 @@ const GameList = ({ player, onJoinGame, onSelectGame }) => {
     try {
       const result = await joinGame(gameId, player);
       if (result.data?.joinGame?.success) {
-        if (onJoinGame) {
-          onJoinGame(gameId);
-        }
-        refetchAvailable();
-        refetchPlayer();
+        // Wait a bit for the operation to process, then poll for the game
+        setTimeout(async () => {
+          let pollCount = 0;
+          const maxPolls = 15; // Poll for up to 30 seconds (15 * 2s)
+          
+          const pollInterval = setInterval(async () => {
+            pollCount++;
+            try {
+              await refetchAvailable();
+              
+              // Check if the game now shows the player as black player
+              const playerData = await refetchPlayer();
+              const playerGames = playerData?.data?.getPlayerGames || [];
+              const joinedGame = playerGames.find(g => g.gameId === gameId && g.blackPlayer === player);
+              
+              if (joinedGame) {
+                clearInterval(pollInterval);
+                if (onJoinGame) {
+                  onJoinGame(gameId);
+                }
+              } else if (pollCount >= maxPolls) {
+                clearInterval(pollInterval);
+                console.warn('Join game polling timed out - game may still be processing');
+              }
+            } catch (error) {
+              console.error('Error polling for joined game:', error);
+              if (pollCount >= maxPolls) {
+                clearInterval(pollInterval);
+              }
+            }
+          }, 2000);
+        }, 1000);
+      } else {
+        const errorMsg = result.data?.joinGame?.message || 'Failed to join game';
+        console.error('Join game failed:', errorMsg);
+        alert(`Error: ${errorMsg}`);
       }
     } catch (error) {
       console.error('Error joining game:', error);
+      const errorMsg = error.message || error.toString() || 'Unknown error';
+      alert(`Error joining game: ${errorMsg}`);
     }
   };
 

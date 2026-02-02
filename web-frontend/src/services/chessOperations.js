@@ -1,4 +1,5 @@
 import { useQuery, useMutation, gql } from '@apollo/client';
+import React from 'react';
 
 // Queries
 export const GET_GAME = gql`
@@ -127,7 +128,27 @@ export const useGame = (gameId) => {
     variables: { gameId },
     skip: !gameId,
     pollInterval: 2000, // Poll every 2 seconds
+    onError: (err) => {
+      console.error('❌ useGame query error:', err);
+      console.error('Query variables:', { gameId });
+      console.error('Error details:', err.graphQLErrors, err.networkError);
+    },
+    onCompleted: (data) => {
+      console.log('✅ useGame query completed:', data);
+      if (data?.getGame) {
+        console.log('Game found:', data.getGame.gameId);
+      } else {
+        console.warn('⚠️ useGame: No game data returned for gameId:', gameId);
+      }
+    },
   });
+
+  // Log when gameId changes
+  React.useEffect(() => {
+    if (gameId) {
+      console.log('🔍 useGame: Querying for gameId:', gameId);
+    }
+  }, [gameId]);
 
   return {
     game: data?.getGame,

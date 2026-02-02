@@ -52,7 +52,7 @@ impl Contract for ChessContract {
             ChessOperation::CreateGame { creator } => {
                 match self.state.create_game(creator, timestamp).await {
                     Ok(game_id) => {
-                        log::info!("Game {} created by {}", game_id, creator);
+                        log::info!("Game {} created by {} (timestamp: {})", game_id, creator, timestamp);
                         
                         self.runtime.emit(
                             StreamName::from("chess_events"),

@@ -125,14 +125,21 @@ pub enum GameStatus {
 // Game state structure
 #[derive(Clone, Serialize, Deserialize, Debug, SimpleObject)]
 pub struct GameState {
+    #[graphql(name = "gameId")]
     pub game_id: u64,
+    #[graphql(name = "whitePlayer")]
     pub white_player: AccountOwner,
+    #[graphql(name = "blackPlayer")]
     pub black_player: Option<AccountOwner>,
+    #[graphql(name = "currentTurn")]
     pub current_turn: Color,
     pub status: GameStatus,
     pub board: String, // FEN notation
+    #[graphql(name = "moveHistory")]
     pub move_history: Vec<ChessMove>,
+    #[graphql(name = "createdAt")]
     pub created_at: u64,
+    #[graphql(name = "lastMoveAt")]
     pub last_move_at: u64,
 }
 

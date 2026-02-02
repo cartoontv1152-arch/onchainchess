@@ -14,16 +14,28 @@ function App({ chainId, appId, ownerId }) {
   const [message, setMessage] = useState(null);
   const [messageType, setMessageType] = useState(null);
 
-  const { game, loading: gameLoading, refetch: refetchGame } = useGame(selectedGameId);
+  const { game, loading: gameLoading, error: gameError, refetch: refetchGame } = useGame(selectedGameId);
+  
+  // Log game query state changes
+  useEffect(() => {
+    if (selectedGameId) {
+      console.log('🎮 App: Selected game ID changed to:', selectedGameId);
+      console.log('🎮 App: Game loading:', gameLoading);
+      console.log('🎮 App: Game error:', gameError);
+      console.log('🎮 App: Game data:', game);
+    }
+  }, [selectedGameId, gameLoading, gameError, game]);
   
   // Helper function to refetch a specific game by ID
   const refetchGameById = async (gameId) => {
     if (!gameId) return null;
     try {
+      console.log('🔄 App: Refetching game:', gameId);
       const { data } = await refetchGame();
+      console.log('✅ App: Refetch result:', data);
       return data?.getGame;
     } catch (error) {
-      console.error(`Error fetching game ${gameId}:`, error);
+      console.error(`❌ App: Error fetching game ${gameId}:`, error);
       return null;
     }
   };
@@ -280,13 +292,54 @@ function App({ chainId, appId, ownerId }) {
     }
   };
 
-  const handleJoinGame = (gameId) => {
+  const handleJoinGame = async (gameId) => {
     setSelectedGameId(gameId);
-    showMessage('Game joined! Loading game...', 'success');
+    showMessage('Game joined! Waiting for confirmation...', 'info');
+    
+    // Poll for the game to ensure it's available and shows the player as black
+    let pollCount = 0;
+    const maxPolls = 20; // Poll for up to 40 seconds (20 * 2s)
+    
+    const pollInterval = setInterval(async () => {
+      pollCount++;
+      try {
+        const gameData = await refetchGame();
+        const game = gameData?.data?.getGame;
+        
+        if (game && game.blackPlayer === account) {
+          clearInterval(pollInterval);
+          showMessage('Successfully joined game!', 'success');
+          await refetchAvailableGames();
+          await refetchPlayerGames();
+        } else if (pollCount >= maxPolls) {
+          clearInterval(pollInterval);
+          if (game) {
+            showMessage('Game loaded, but join may still be processing...', 'warning');
+          } else {
+            showMessage('Game not found. The join operation may still be processing.', 'warning');
+          }
+        }
+      } catch (error) {
+        console.error('Error polling for joined game:', error);
+        if (pollCount >= maxPolls) {
+          clearInterval(pollInterval);
+          showMessage('Error loading game. Please try viewing it from the game list.', 'error');
+        }
+      }
+    }, 2000);
   };
 
   const handleSelectGame = (gameId) => {
+    console.log('🎮 App: handleSelectGame called with gameId:', gameId);
+    console.log('🎮 App: Setting selectedGameId to:', gameId);
     setSelectedGameId(gameId);
+    // Immediately try to refetch to see if query is sent
+    setTimeout(() => {
+      if (refetchGame) {
+        console.log('🔄 App: Triggering immediate refetch for gameId:', gameId);
+        refetchGame();
+      }
+    }, 100);
   };
 
   const getPlayerColor = () => {
@@ -375,7 +428,37 @@ function App({ chainId, appId, ownerId }) {
             {gameLoading ? (
               <div className="loading">Loading game...</div>
             ) : !game ? (
-              <div className="error">Game not found</div>
+              <div className="error-container">
+                <div className="error">Game not found</div>
+                <p className="error-details">
+                  Game ID: {selectedGameId}<br/>
+                  The game may still be processing. Operations are asynchronous and may take a few seconds.<br/>
+                  Please wait a moment and try again, or check the game list to see if the game appears there.
+                </p>
+                <button
+                  className="retry-button"
+                  onClick={() => {
+                    if (refetchGame) {
+                      refetchGame();
+                    }
+                    // Also refetch available games to see if game appears
+                    if (refetchAvailableGames) {
+                      refetchAvailableGames();
+                    }
+                    if (refetchPlayerGames) {
+                      refetchPlayerGames();
+                    }
+                  }}
+                >
+                  Retry Loading
+                </button>
+                <button
+                  className="back-button"
+                  onClick={() => setSelectedGameId(null)}
+                >
+                  Back to Games
+                </button>
+              </div>
             ) : (
               <>
                 <div className="game-header">

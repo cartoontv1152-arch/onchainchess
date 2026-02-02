@@ -255,6 +255,40 @@
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
+.error-container {
+  text-align: center;
+  padding: 3rem;
+}
+
+.error-container .error {
+  font-size: 1.5rem;
+  color: #ef4444;
+  font-weight: bold;
+  margin-bottom: 1rem;
+}
+
+.error-container .error-details {
+  color: #666;
+  margin-bottom: 2rem;
+  line-height: 1.6;
+}
+
+.error-container .retry-button {
+  background: #667eea;
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+  margin-right: 1rem;
+}
+
+.error-container .retry-button:hover {
+  background: #5568d3;
+}
+
 .game-header {
   display: flex;
   justify-content: space-between;
