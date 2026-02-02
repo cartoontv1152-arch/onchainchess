@@ -5,6 +5,7 @@ use crate::state::ChessState;
 use linera_sdk::{Contract, ContractRuntime};
 use linera_sdk::abi::WithContractAbi;
 use linera_sdk::linera_base_types::{AccountOwner, StreamName};
+use linera_sdk::views::{RootView, View};
 use onchainchess::{ChessAbi, ChessMessage, ChessOperation, GameStatus, Color};
 
 linera_sdk::contract!(ChessContract);

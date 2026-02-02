@@ -7,6 +7,7 @@ use async_graphql::{Object, Request, Response, Schema, SimpleObject};
 use linera_sdk::{Service, ServiceRuntime};
 use linera_sdk::abi::WithServiceAbi;
 use linera_sdk::linera_base_types::AccountOwner;
+use linera_sdk::views::View;
 
 use std::sync::Arc;
 use tokio::sync::Mutex;
