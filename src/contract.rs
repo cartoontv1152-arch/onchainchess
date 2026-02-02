@@ -5,14 +5,12 @@ use crate::state::ChessState;
 use linera_sdk::{Contract, ContractRuntime};
 use linera_sdk::abi::WithContractAbi;
 use linera_sdk::linera_base_types::{AccountOwner, StreamName};
-use std::sync::Arc;
-use tokio::sync::Mutex;
 use onchainchess::{ChessAbi, ChessMessage, ChessOperation, GameStatus, Color};
 
 linera_sdk::contract!(ChessContract);
 
 pub struct ChessContract {
-    state: Arc<Mutex<ChessState>>,
+    state: ChessState,
     runtime: ContractRuntime<Self>,
 }
 
@@ -24,14 +22,11 @@ impl Contract for ChessContract {
 
     async fn load(runtime: ContractRuntime<Self>) -> Self {
         let context = runtime.root_view_storage_context();
-        let state = match ChessState::load(context.clone()).await {
-            Ok(state) => state,
-            Err(_) => {
-                ChessState::create_empty(context)
-            }
-        };
+        let state = ChessState::load(context)
+            .await
+            .expect("Failed to load state");
         Self {
-            state: Arc::new(Mutex::new(state)),
+            state,
             runtime,
         }
     }
@@ -39,36 +34,24 @@ impl Contract for ChessContract {
     async fn instantiate(&mut self, _argument: Self::InstantiationArgument) {
         log::info!("Chess contract instantiate called");
         
-        let mut state = self.state.lock().await;
-        if state.owner.get().is_some() {
+        if self.state.owner.get().is_some() {
             log::info!("Contract already has an owner, skipping initialization");
             return;
         }
 
         let contract_address: AccountOwner = self.runtime.application_id().into();
-        let _ = state.set_owner(contract_address).await;
+        let _ = self.state.set_owner(contract_address).await;
         log::info!("Chess contract owner set to: {}", contract_address);
     }
 
     async fn execute_operation(&mut self, operation: ChessOperation) {
-        let mut state = self.state.lock().await;
         let timestamp = self.runtime.system_time().micros();
         
         match operation {
             ChessOperation::CreateGame { creator } => {
-                match state.create_game(creator, timestamp).await {
+                match self.state.create_game(creator, timestamp).await {
                     Ok(game_id) => {
                         log::info!("Game {} created by {}", game_id, creator);
-                        // Force save the state - views should auto-save but let's be explicit
-                        if let Err(e) = state.save().await {
-                            log::error!("Failed to save state after creating game: {:?}", e);
-                        } else {
-                            log::info!("State saved after creating game {}", game_id);
-                        }
-                        
-                        // Verify the game was saved by checking game_counter
-                        let counter = *state.game_counter.get();
-                        log::info!("After save: game_counter = {}", counter);
                         
                         self.runtime.emit(
                             StreamName::from("chess_events"),
@@ -84,10 +67,9 @@ impl Contract for ChessContract {
                 }
             }
             ChessOperation::JoinGame { game_id, player } => {
-                match state.join_game(game_id, player).await {
+                match self.state.join_game(game_id, player).await {
                     Ok(_) => {
                         log::info!("Player {} joined game {}", player, game_id);
-                        let _ = state.save().await;
                         
                         self.runtime.emit(
                             StreamName::from("chess_events"),
@@ -103,7 +85,7 @@ impl Contract for ChessContract {
                 }
             }
             ChessOperation::MakeMove { game_id, player, chess_move } => {
-                match state.get_game(game_id).await {
+                match self.state.get_game(game_id).await {
                     Ok(Some(mut game)) => {
                         // Validate it's the player's turn
                         let is_white = game.white_player == player;
@@ -138,10 +120,9 @@ impl Contract for ChessContract {
                         // Update game status (simplified - check for checkmate/stalemate)
                         // In production, implement full chess logic
                         
-                        match state.update_game(game_id, game.clone()).await {
+                        match self.state.update_game(game_id, game.clone()).await {
                             Ok(_) => {
                                 log::info!("Move applied to game {} by {}", game_id, player);
-                                let _ = state.save().await;
                                 
                                 self.runtime.emit(
                                     StreamName::from("chess_events"),
@@ -166,7 +147,7 @@ impl Contract for ChessContract {
                 }
             }
             ChessOperation::ResignGame { game_id, player } => {
-                match state.get_game(game_id).await {
+                match self.state.get_game(game_id).await {
                     Ok(Some(mut game)) => {
                         let is_white = game.white_player == player;
                         let is_black = game.black_player == Some(player);
@@ -182,10 +163,9 @@ impl Contract for ChessContract {
                             GameStatus::WhiteWon
                         };
                         
-                        match state.update_game(game_id, game.clone()).await {
+                        match self.state.update_game(game_id, game.clone()).await {
                             Ok(_) => {
                                 log::info!("Player {} resigned game {}", player, game_id);
-                                let _ = state.save().await;
                                 
                                 self.runtime.emit(
                                     StreamName::from("chess_events"),
@@ -221,9 +201,8 @@ impl Contract for ChessContract {
         }
     }
 
-    async fn store(self) {
-        let mut state = self.state.lock().await;
-        let _ = state.save().await;
+    async fn store(mut self) {
+        let _ = self.state.save().await;
     }
 }
 

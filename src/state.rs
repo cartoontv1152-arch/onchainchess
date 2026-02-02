@@ -22,25 +22,8 @@ impl ChessState {
         }
     }
 
-    pub async fn load(context: ViewStorageContext) -> Result<Self, ViewError> {
-        // RootView automatically loads data from storage when constructed
-        // We need to use RootView::load() or construct and then load
-        // For now, create empty and let views load on access
-        let mut state = Self {
-            owner: RegisterView::new(context.clone())?,
-            games: MapView::new(context.clone())?,
-            game_counter: RegisterView::new(context.clone())?,
-            player_games: MapView::new(context.clone())?,
-        };
-        
-        // Force load by accessing the views - this triggers loading from storage
-        // The views will automatically sync with storage when accessed
-        let _ = state.owner.get();
-        let _ = state.game_counter.get();
-        // Games and player_games will load when accessed via get() calls
-        
-        Ok(state)
-    }
+    // RootView derive macro generates load() and save() methods automatically
+    // These are used directly: ChessState::load(context).await
 
     pub async fn set_owner(&mut self, owner: AccountOwner) -> Result<(), ViewError> {
         self.owner.set(Some(owner));
@@ -149,9 +132,6 @@ impl ChessState {
         Ok(())
     }
 
-    pub async fn save(&mut self) -> Result<(), ViewError> {
-        // Views are automatically saved when modified
-        // No explicit save needed with RootView
-        Ok(())
-    }
+    // RootView derive macro generates save() method automatically
+    // Used in contract store(): self.state.save().await
 }

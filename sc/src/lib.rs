@@ -1,0 +1,437 @@
+// Copyright (c) Zefchain Labs, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+/*! ABI of the Doodle Game Application */
+
+use async_graphql::{Request, Response};
+use linera_sdk::linera_base_types::{ContractAbi, ServiceAbi};
+use serde::{Deserialize, Serialize};
+
+pub struct DoodleGameAbi;
+
+impl ContractAbi for DoodleGameAbi {
+    type Operation = Operation;
+    type Response = ();
+}
+
+impl ServiceAbi for DoodleGameAbi {
+    type Query = Request;
+    type QueryResponse = Response;
+}
+
+// Player structure
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, async_graphql::Enum, PartialEq, Eq)]
+pub enum PlayerStatus {
+    Active,
+    Left,
+}
+
+impl Default for PlayerStatus {
+    fn default() -> Self {
+        PlayerStatus::Active
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, async_graphql::SimpleObject)]
+#[graphql(rename_fields = "camelCase")]
+pub struct Player {
+    pub chain_id: String,
+    pub name: String,
+    #[serde(default)]
+    pub avatar_json: String,
+    pub score: u32,
+    pub has_guessed: bool,
+    #[serde(default)]
+    pub status: PlayerStatus,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, async_graphql::SimpleObject)]
+pub struct MatchmakingPlayer {
+    pub chain_id: String,
+    pub player_name: String,
+    pub avatar_json: String,
+    pub leaderboard_chain_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, async_graphql::SimpleObject)]
+pub struct LeaderboardEntry {
+    pub player_name: String,
+    pub chain_id: String,
+    pub score: u32,
+}
+
+// Drawing will be handled via WebSockets, not smart contracts
+// Keeping these structures for potential future use or compatibility
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DrawPoint {
+    pub x: i32,
+    pub y: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DrawPointOutput {
+    pub x: i32,
+    pub y: i32,
+}
+
+// Game room structure
+#[derive(Debug, Clone, Serialize, Deserialize, async_graphql::SimpleObject)]
+#[graphql(rename_fields = "camelCase")]
+pub struct GameRoom {
+    pub room_id: String,
+    pub host_chain_id: String,
+    pub players: Vec<Player>,
+    pub game_state: GameState,
+    pub current_round: u32,
+    pub total_rounds: u32,
+    pub seconds_per_round: u32,
+    pub current_drawer_index: Option<usize>,
+    pub word_chosen_at: Option<String>,  // NEEDED for drawing timer
+    pub chat_messages: Vec<ChatMessage>,
+    pub drawer_chosen_at: Option<String>, // NEEDED for word selection timer
+    pub blob_hashes: Vec<String>, // History of all drawings in the room
+    pub leaderboard_chain_id: Option<String>,
+}
+
+// Archived room data (stored after deletion)
+#[derive(Debug, Clone, Serialize, Deserialize, async_graphql::SimpleObject)]
+#[graphql(rename_fields = "camelCase")]
+pub struct ArchivedRoom {
+    pub room_id: String,
+    pub blob_hashes: Vec<String>,
+    pub timestamp: String,
+}
+
+// Game states
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, async_graphql::Enum, PartialEq, Eq)]
+pub enum GameState {
+    WaitingForPlayers,
+    GameStarted,
+    ChoosingDrawer,
+    WaitingForWord,
+    Drawing,
+    RoundEnded,
+    GameEnded,
+}
+
+// Chat message
+#[derive(Debug, Clone, Serialize, Deserialize, async_graphql::SimpleObject)]
+#[graphql(rename_fields = "camelCase")]
+pub struct ChatMessage {
+    pub player_name: String,
+    pub message: String,
+    pub is_correct_guess: bool,
+    pub points_awarded: u32,
+}
+
+// Game event for history tracking (deprecated - no longer used)
+#[derive(Debug, Clone, Serialize, Deserialize, async_graphql::SimpleObject)]
+#[graphql(rename_fields = "camelCase")]
+pub struct GameEvent {
+    pub event_type: String,
+    pub description: String,
+    pub timestamp: String,
+    pub player_name: Option<String>,
+    pub round: Option<u32>,
+}
+
+// Data Blob info for GraphQL responses
+#[derive(Debug, Clone, Serialize, Deserialize, async_graphql::SimpleObject)]
+#[graphql(rename_fields = "camelCase")]
+pub struct DataBlobInfo {
+    pub hash: String,
+    pub size: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, async_graphql::SimpleObject)]
+#[graphql(rename_fields = "camelCase")]
+pub struct Invitation {
+    pub host_chain_id: String,
+    pub timestamp: String,
+}
+
+// Operations
+#[derive(Debug, Serialize, Deserialize)]
+pub enum Operation {
+    CreateRoom { host_name: String, avatar_json: String },
+    JoinRoom { host_chain_id: String, player_name: String, avatar_json: String },
+    StartGame { rounds: u32, seconds_per_round: u32 },
+    ChooseDrawer, // logic moved to async, no hash needed here
+    ChooseWord { word: String },
+    GuessWord { guess: String },
+    EndMatch,
+    LeaveRoom { blob_hashes: Option<Vec<String>> },
+    // Data Blob operations (read only - blobs created via CLI/GraphQL)
+    ReadDataBlob { hash: String },
+    // Matchmaking
+    JoinMatchmaking { matchmaking_chain_id: String, leaderboard_chain_id: String, player_name: String, avatar_json: String },
+    LeaveMatchmaking { matchmaking_chain_id: String },
+    
+    // Friend System
+    RequestFriend { target_chain_id: String },
+    AcceptFriend { requester_chain_id: String },
+    DeclineFriend { requester_chain_id: String },
+    
+    // Invite System
+    InviteFriend { friend_chain_id: String },
+    AcceptInvite { host_chain_id: String, player_name: String, avatar_json: String },
+    DeclineInvite { host_chain_id: String },
+}
+
+// Events for cross-chain synchronization
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum DoodleEvent {
+    PlayerJoined { player: Player, timestamp: String },
+    PlayerLeft { player_chain_id: String, timestamp: String },
+    GameStarted { 
+        rounds: u32, 
+        seconds_per_round: u32, 
+        drawer_index: usize, 
+        drawer_name: String, 
+        timestamp: String 
+    },
+    DrawerChosen { 
+        drawer_index: usize, 
+        drawer_name: String, 
+        timestamp: String,
+        previous_blob_hash: Option<String> 
+    },
+    WordChosen { timestamp: String },
+    ChatMessage { message: ChatMessage },
+    RoundEnded { 
+        scores: Vec<(String, u32)>, 
+        timestamp: String 
+    },
+    GameEnded { final_scores: Vec<(String, u32)>, timestamp: String },
+    MatchEnded { timestamp: String },
+}
+
+// Cross-chain messages
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum CrossChainMessage {
+    JoinRequest { 
+        player_chain_id: linera_sdk::linera_base_types::ChainId,
+        player_name: String,
+        avatar_json: String,
+    },
+    GuessSubmission {
+        guesser_chain_id: linera_sdk::linera_base_types::ChainId,
+        guess: String,
+        round: u32,
+    },
+    // Initial state sync when player joins (one-time)
+    InitialStateSync {
+        room_data: GameRoom,
+    },
+    // Повідомлення про видалення кімнати (відключення всіх гравців)
+    RoomDeleted {
+        timestamp: String,
+        archived_room: Option<ArchivedRoom>,
+    },
+    PlayerLeft {
+        player_chain_id: linera_sdk::linera_base_types::ChainId,
+        player_name: Option<String>,
+        timestamp: String,
+    },
+    // Matchmaking Messages
+    MatchmakingEnqueue {
+        player_chain_id: linera_sdk::linera_base_types::ChainId,
+        player_name: String,
+        avatar_json: String,
+        leaderboard_chain_id: String,
+    },
+    MatchmakingStart {
+        host_name: String,
+        players: Vec<MatchmakingPlayer>,
+        leaderboard_chain_id: String, // Taken from host (player 0)
+    },
+    MatchmakingFound {
+        host_chain_id: linera_sdk::linera_base_types::ChainId,
+    },
+    MatchmakingLeave {
+        player_chain_id: linera_sdk::linera_base_types::ChainId,
+    },
+    MatchmakingStatusUpdate {
+        players_in_queue: u32,
+    },
+    UpdateLeaderboard {
+        entries: Vec<LeaderboardEntry>,
+    },
+    
+    // Friend System Messages
+    FriendRequest {
+        requester_chain_id: linera_sdk::linera_base_types::ChainId,
+    },
+    FriendAccepted {
+        target_chain_id: linera_sdk::linera_base_types::ChainId,
+    },
+    
+    // Invite System Messages
+    RoomInvitation {
+        host_chain_id: linera_sdk::linera_base_types::ChainId,
+        timestamp: String,
+    },
+    RoomInvitationCancelled {
+        host_chain_id: linera_sdk::linera_base_types::ChainId,
+    },
+}
+
+impl GameRoom {
+    pub fn new(host_chain_id: String, host_name: String, avatar_json: String, _timestamp: String, leaderboard_chain_id: Option<String>) -> Self {
+        let host_player = Player {
+            chain_id: host_chain_id.clone(),
+            name: host_name.clone(),
+            avatar_json,
+            score: 0,
+            has_guessed: false,
+            status: PlayerStatus::Active,
+        };
+        
+        Self {
+            room_id: _timestamp.clone(),
+            host_chain_id,
+            players: vec![host_player],
+            game_state: GameState::WaitingForPlayers,
+            current_round: 0,
+            total_rounds: 0,
+            seconds_per_round: 0,
+            current_drawer_index: None,
+            word_chosen_at: None,
+            chat_messages: Vec::new(),
+            drawer_chosen_at: None,
+            blob_hashes: Vec::new(),
+            leaderboard_chain_id,
+        }
+    }
+
+    pub fn add_player(&mut self, player: Player) {
+        if let Some(existing) = self.players.iter_mut().find(|p| p.chain_id == player.chain_id) {
+            existing.name = player.name;
+            existing.avatar_json = player.avatar_json;
+            existing.status = PlayerStatus::Active;
+        } else {
+            self.players.push(player);
+        }
+    }
+    
+    pub fn start_game(&mut self, rounds: u32, seconds_per_round: u32, _timestamp: String) {
+        self.total_rounds = rounds;
+        self.seconds_per_round = seconds_per_round;
+        self.current_round = 1;
+        self.game_state = GameState::ChoosingDrawer;
+        
+        // Reset all player scores and guessed status
+        for player in &mut self.players {
+            player.score = 0;
+            player.has_guessed = false;
+        }
+    }
+
+    pub fn choose_drawer(&mut self, timestamp: String) -> Option<usize> {
+        if self.players.iter().all(|p| p.status != PlayerStatus::Active) {
+            return None;
+        }
+
+        let players_len = self.players.len();
+        let start_index = match self.current_drawer_index {
+            None => 0,
+            Some(current) => (current + 1) % players_len,
+        };
+
+        let mut next_index: Option<usize> = None;
+        for offset in 0..players_len {
+            let idx = (start_index + offset) % players_len;
+            if matches!(self.players.get(idx).map(|p| p.status), Some(PlayerStatus::Active)) {
+                next_index = Some(idx);
+                break;
+            }
+        }
+
+        let next_index = next_index?;
+
+        self.current_drawer_index = Some(next_index);
+        self.game_state = GameState::WaitingForWord;
+        self.word_chosen_at = None;
+        self.drawer_chosen_at = Some(timestamp.clone());
+        
+        // Reset guessed status for new drawer
+        for player in &mut self.players {
+            player.has_guessed = false;
+        }
+
+        Some(next_index)
+    }
+
+    pub fn choose_word(&mut self, timestamp: String) {
+        self.word_chosen_at = Some(timestamp);
+        self.game_state = GameState::Drawing;
+    }
+
+    pub fn add_chat_message(&mut self, message: ChatMessage) {
+        self.chat_messages.push(message);
+    }
+
+    pub fn advance_to_next_round(&mut self, _timestamp: String) {
+        if self.current_round < self.total_rounds {
+            self.current_round += 1;
+            self.game_state = GameState::ChoosingDrawer;
+            // Reset drawer index so choose_drawer() starts from first player in new round
+            self.current_drawer_index = None;
+            self.word_chosen_at = None;
+            
+            // MEMORY OPTIMIZATION: Clear chat messages on new round
+            self.chat_messages.clear();
+        } else {
+            self.game_state = GameState::GameEnded;
+        }
+    }
+
+    pub fn has_all_players_drawn_in_round(&self) -> bool {
+        if self.players.iter().all(|p| p.status != PlayerStatus::Active) {
+            return false;
+        }
+        
+        match self.current_drawer_index {
+            None => false,
+            Some(current_index) => self.next_active_index_after(current_index)
+                .zip(self.first_active_index())
+                .map(|(next, first)| next == first)
+                .unwrap_or(false),
+        }
+    }
+
+    pub fn get_current_drawer(&self) -> Option<&Player> {
+        self.current_drawer_index.and_then(|index| self.players.get(index))
+    }
+
+    pub fn award_points(&mut self, player_name: &str, points: u32) {
+        if let Some(player) = self.players.iter_mut().find(|p| p.name == player_name) {
+            player.score += points;
+            player.has_guessed = true;
+        }
+    }
+
+    pub fn end_match(&mut self, _timestamp: String) {
+        // Note: This method is now deprecated as endMatch completely deletes the room
+        // instead of just resetting it. This is kept for backward compatibility.
+        eprintln!("[DEPRECATED] end_match() called - room should be completely deleted instead");
+    }
+
+    fn first_active_index(&self) -> Option<usize> {
+        self.players.iter().position(|p| p.status == PlayerStatus::Active)
+    }
+
+    fn next_active_index_after(&self, current_index: usize) -> Option<usize> {
+        if self.players.is_empty() {
+            return None;
+        }
+        let players_len = self.players.len();
+        for offset in 1..=players_len {
+            let idx = (current_index + offset) % players_len;
+            if matches!(self.players.get(idx).map(|p| p.status), Some(PlayerStatus::Active)) {
+                return Some(idx);
+            }
+        }
+        None
+    }
+}
