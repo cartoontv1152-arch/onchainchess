@@ -1,9 +1,28 @@
 #![cfg_attr(target_arch = "wasm32", no_main)]
 
 use serde::{Deserialize, Serialize};
-use linera_sdk::linera_base_types::AccountOwner;
-use linera_sdk::abi::{ContractAbi, ServiceAbi};
-use async_graphql::{Enum, InputObject, SimpleObject};
+use linera_sdk::linera_base_types::ChainId;
+use linera_sdk::abi::{ContractAbi as LineraContractAbi, ServiceAbi as LineraServiceAbi};
+use async_graphql::{Enum, InputObject, SimpleObject, Request, Response};
+
+// ABI
+pub struct ChessAbi;
+
+impl LineraContractAbi for ChessAbi {
+    type Operation = Operation;
+    type Response = ();
+}
+
+impl LineraServiceAbi for ChessAbi {
+    type Query = Request;
+    type QueryResponse = Response;
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct ChessParameters;
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct InstantiationArgument;
 
 // Chess piece types
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq, Eq, Enum)]
@@ -110,84 +129,66 @@ impl ChessMove {
     }
 }
 
-// Game status
+// Game status (MatchStatus equivalent)
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq, Eq, Enum)]
-pub enum GameStatus {
+pub enum MatchStatus {
     WaitingForPlayer,
-    InProgress,
-    WhiteWon,
-    BlackWon,
-    Draw,
-    Stalemate,
-    Checkmate,
+    Active,
+    Ended,
 }
 
-// Game state structure
-#[derive(Clone, Serialize, Deserialize, Debug, SimpleObject)]
-pub struct GameState {
-    pub game_id: u64,
-    pub white_player: AccountOwner,
-    pub black_player: Option<AccountOwner>,
+// Player info
+#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
+#[graphql(rename_fields = "camelCase")]
+pub struct PlayerInfo {
+    pub chain_id: String,
+    pub name: String,
+}
+
+// Move record (similar to RoundRecord in SPS)
+#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
+#[graphql(rename_fields = "camelCase")]
+pub struct MoveRecord {
+    pub move_number: u32,
+    pub chess_move: ChessMove,
+    pub player_color: Color,
+    pub timestamp: String,
+    pub fen_after: String,
+}
+
+// Game structure (single game per chain, like SPS)
+#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
+#[graphql(rename_fields = "camelCase")]
+pub struct Game {
+    pub match_id: String,
+    pub host_chain_id: String,
+    pub status: MatchStatus,
+    pub players: Vec<PlayerInfo>,
     pub current_turn: Color,
-    pub status: GameStatus,
     pub board: String, // FEN notation
-    pub move_history: Vec<ChessMove>,
-    pub created_at: u64,
-    pub last_move_at: u64,
+    pub move_history: Vec<MoveRecord>,
+    pub created_at: String,
+    pub last_move_at: Option<String>,
+    pub winner_chain_id: Option<String>,
 }
 
 // Operation types
-#[derive(Clone, Serialize, Deserialize, Debug)]
-pub enum ChessOperation {
-    CreateGame {
-        creator: AccountOwner,
-    },
-    JoinGame {
-        game_id: u64,
-        player: AccountOwner,
-    },
-    MakeMove {
-        game_id: u64,
-        player: AccountOwner,
-        chess_move: ChessMove,
-    },
-    ResignGame {
-        game_id: u64,
-        player: AccountOwner,
-    },
+#[derive(Debug, Serialize, Deserialize)]
+pub enum Operation {
+    CreateMatch { host_name: String },
+    JoinMatch { host_chain_id: String, player_name: String },
+    MakeMove { chess_move: ChessMove },
+    ResignMatch,
+    EndGame { status: MatchStatus },
 }
 
-// Message types (for cross-chain)
-#[derive(Clone, Serialize, Deserialize, Debug)]
-pub enum ChessMessage {
-    GameCreated {
-        game_id: u64,
-        creator: AccountOwner,
-    },
-    GameJoined {
-        game_id: u64,
-        player: AccountOwner,
-    },
-    MoveMade {
-        game_id: u64,
-        player: AccountOwner,
-        chess_move: ChessMove,
-    },
-    GameEnded {
-        game_id: u64,
-        status: GameStatus,
-    },
-}
-
-// ABI
-pub struct ChessAbi;
-
-impl ContractAbi for ChessAbi {
-    type Operation = ChessOperation;
-    type Response = ();
-}
-
-impl ServiceAbi for ChessAbi {
-    type Query = async_graphql::Request;
-    type QueryResponse = async_graphql::Response;
+// Cross-chain message types
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum CrossChainMessage {
+    JoinRequest { player_chain_id: ChainId, player_name: String },
+    InitialStateSync { game: Game },
+    GameSync { game: Game },
+    MoveSync { chess_move: ChessMove, player_chain_id: ChainId },
+    ResignNotice { player_chain_id: ChainId },
+    GameEndNotice { player_chain_id: ChainId, status: MatchStatus },
 }

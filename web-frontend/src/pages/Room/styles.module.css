@@ -1,0 +1,204 @@
+.container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #a8e6cf 0%, #88d8a3 50%, #6bc88a 100%);
+  display: flex;
+  flex-direction: column;
+  padding: 2rem;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.backButton {
+  padding: 0.5rem 1rem;
+  background: #4a9d6f;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: background 0.3s;
+}
+
+.backButton:hover {
+  background: #2d8659;
+}
+
+.gameInfo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.players {
+  display: flex;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+
+.player {
+  padding: 0.5rem 1rem;
+  background: white;
+  border-radius: 6px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.player.you {
+  background: #e8f5e9;
+  border: 2px solid #2d8659;
+}
+
+.playerLabel {
+  font-weight: bold;
+  color: #4a9d6f;
+  margin-right: 0.5rem;
+}
+
+.playerName {
+  color: #333;
+}
+
+.status {
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.statusValue {
+  font-weight: bold;
+  color: #2d8659;
+}
+
+.turnIndicator {
+  padding: 0.5rem 1rem;
+  background: #e8f5e9;
+  border-radius: 6px;
+  font-weight: bold;
+  color: #4a9d6f;
+}
+
+.resignButton {
+  padding: 0.5rem 1.5rem;
+  background: #FF4444;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: background 0.3s;
+}
+
+.resignButton:hover {
+  background: #CC0000;
+}
+
+.loading {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #2d8659;
+  font-size: 1.5rem;
+  background: linear-gradient(135deg, #a8e6cf 0%, #88d8a3 50%, #6bc88a 100%);
+}
+
+.waiting {
+  text-align: center;
+  padding: 3rem;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.waiting_text {
+  font-size: 1.5rem;
+  color: #4a9d6f;
+  margin-bottom: 1rem;
+}
+
+.roomIdSection {
+  margin-top: 1.5rem;
+}
+
+.room_id_label {
+  font-size: 1rem;
+  color: #4a9d6f;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+.roomIdContainer {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: #e8f5e9;
+  padding: 0.75rem;
+  border-radius: 8px;
+}
+
+.room_id {
+  font-family: monospace;
+  background: white;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  color: #333;
+  word-break: break-all;
+  font-size: 0.9rem;
+  flex: 1;
+  border: 1px solid #88d8a3;
+}
+
+.copyButton {
+  padding: 0.5rem 1rem;
+  background: #2d8659;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background 0.3s;
+  white-space: nowrap;
+}
+
+.copyButton:hover {
+  background: #4a9d6f;
+}
+
+.gameArea {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+
+.boardWrapper {
+  background: white;
+  padding: 2rem;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 800px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.boardWrapper > div {
+  width: 100% !important;
+  max-width: 800px !important;
+}
+
+.boardWrapper svg {
+  width: 100% !important;
+  height: auto !important;
+  max-width: 800px !important;
+}

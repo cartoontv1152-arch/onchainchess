@@ -1,0 +1,80 @@
+.container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #a8e6cf 0%, #88d8a3 50%, #6bc88a 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.loading {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #2d8659;
+  font-size: 1.5rem;
+  background: linear-gradient(135deg, #a8e6cf 0%, #88d8a3 50%, #6bc88a 100%);
+}
+
+.result_card {
+  background: white;
+  border-radius: 16px;
+  padding: 3rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  text-align: center;
+  max-width: 800px;
+  width: 100%;
+}
+
+.title {
+  font-size: 3rem;
+  font-weight: bold;
+  color: #2d8659;
+  margin-bottom: 2rem;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.gameInfo {
+  margin-bottom: 2rem;
+}
+
+.players {
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.player {
+  padding: 0.5rem 1rem;
+  background: #e8f5e9;
+  border-radius: 6px;
+}
+
+.playerLabel {
+  font-weight: bold;
+  color: #4a9d6f;
+  margin-right: 0.5rem;
+}
+
+.playerName {
+  color: #333;
+}
+
+.moveCount {
+  color: #666;
+  font-size: 1rem;
+  margin-top: 1rem;
+}
+
+.boardWrapper {
+  display: flex;
+  justify-content: center;
+  margin: 2rem 0;
+}
+
+.btn_container {
+  margin-top: 2rem;
+}

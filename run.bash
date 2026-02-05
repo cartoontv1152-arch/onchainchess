@@ -1,144 +1,146 @@
 #!/usr/bin/env bash
 
-set -euo pipefail
+set -eu
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+echo ">>> Starting Linera network..."
 
-# Sync container time with host/NTP to avoid blockchain timestamp errors
-echo "Syncing container time..."
-SYNC_SUCCESS=false
-if command -v ntpdate >/dev/null 2>&1; then
-    # Try to sync with NTP servers (requires privileged mode or CAP_SYS_TIME)
-    if ntpdate -s pool.ntp.org 2>/dev/null; then
-        SYNC_SUCCESS=true
-        echo "Time synced via NTP"
+# Clear any existing Linera network storage so we don't get
+# "storage is already initialized" when re-running (e.g. after docker compose down/up).
+# Storage can persist on the host via the .:/build volume mount, in the container's home,
+# or in /tmp (e.g. .tmp* dirs from linera net helper).
+for base in /build "$HOME"; do
+  if [ -d "$base/.linera" ]; then
+    echo ">>> Clearing existing Linera network storage ($base/.linera)..."
+    rm -rf "$base/.linera"
+  fi
+  for d in "$base"/linera-*; do
+    if [ -d "$d" ]; then
+      echo ">>> Clearing existing Linera network storage ($d)..."
+      rm -rf "$d"
     fi
-fi
-# Also sync with host time if /etc/localtime is mounted
-if [ -f /etc/localtime ]; then
-    echo "Using host timezone: $(cat /etc/timezone 2>/dev/null || echo 'unknown')"
-fi
-echo "Current container time: $(date)"
-# If time sync failed, add a small delay to ensure we're not too far ahead
-if [ "$SYNC_SUCCESS" = false ]; then
-    echo "Warning: Time sync may have failed. Adding delay to avoid timestamp issues..."
-    sleep 2
-fi
+  done
+done
+# Clear /tmp Linera dirs (helper may use e.g. /tmp/.tmpXXXX)
+for tmpd in /tmp/.tmp* /tmp/linera*; do
+  if [ -d "$tmpd" ]; then
+    echo ">>> Clearing existing Linera temp storage ($tmpd)..."
+    rm -rf "$tmpd"
+  fi
+done
+eval "$(linera net helper)"
+# Clear the path the helper just set (it may point to existing storage from a previous run)
+for var in LINERA_NETWORK LINERA_NETWORK_DIR LINERA_STORAGE LINERA_NETWORK_STORAGE LINERA_NET; do
+  if [ -n "${!var:-}" ]; then
+    path="${!var}"
+    path="${path#rocksdb:}"  # strip rocksdb: prefix if present
+    if [ -f "$path" ]; then
+      path="$(dirname "$path")"
+    fi
+    if [ -d "$path" ]; then
+      echo ">>> Clearing helper storage path ($path)..."
+      rm -rf "$path"
+    fi
+  fi
+done 2>/dev/null || true
 
-# Configurable defaults (can be overridden via environment variables)
-FAUCET_URL="${FAUCET_URL:-https://faucet.testnet-conway.linera.net}"
-SERVICE_PORT="${SERVICE_PORT:-8080}"
-FRONTEND_PORT="${FRONTEND_PORT:-5173}"
+linera_spawn linera net up --with-faucet
 
-# Hardcoded Owner ID from README for frontend (can be overridden via environment variable)
-FRONTEND_OWNER_ID="${FRONTEND_OWNER_ID:-0x62bda14cdcb5ee207ff27b60975283e35229424320a48ac10dc4b006a7478fa2}"
+# Wait for faucet to be ready
+echo ">>> Waiting for faucet to be ready..."
+sleep 5
+for i in {1..30}; do
+  if curl -s http://localhost:8080 > /dev/null 2>&1; then
+    echo ">>> Faucet is ready!"
+    break
+  fi
+  echo ">>> Waiting for faucet... ($i/30)"
+  sleep 1
+done
 
-export LINERA_DIR="${LINERA_DIR:-$SCRIPT_DIR}"
-export LINERA_WALLET="${LINERA_WALLET:-$HOME/.config/linera/wallet.json}"
-export LINERA_KEYSTORE="${LINERA_KEYSTORE:-$HOME/.config/linera/keystore.json}"
-export LINERA_STORAGE="${LINERA_STORAGE:-rocksdb:$HOME/.config/linera/wallet.db}"
+export LINERA_FAUCET_URL=http://localhost:8080
 
-mkdir -p "$(dirname "$LINERA_WALLET")"
-
-echo "== OnChainChess bootstrap =="
-echo "Project directory : $SCRIPT_DIR"
-echo "Linera binaries   : $(command -v linera || echo 'not found')"
-echo "Faucet URL        : $FAUCET_URL"
-echo "Service port      : $SERVICE_PORT"
-echo "Frontend port     : $FRONTEND_PORT"
-
-# Ensure npm is available when using nvm-installed Node
-export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
-if [ -s "$NVM_DIR/nvm.sh" ]; then
-  . "$NVM_DIR/nvm.sh"
-fi
-
-# Ensure wasm target is available
-if ! rustup target list --installed | grep -q "wasm32-unknown-unknown"; then
-  rustup target add wasm32-unknown-unknown
-fi
-
-# Wallet setup
-if [ ! -f "$LINERA_WALLET" ]; then
-  echo "Initializing wallet..."
-  linera wallet init --faucet "$FAUCET_URL"
-else
-  echo "Wallet already exists."
+# Initialize wallet if not already done
+if [ ! -f ~/.config/linera/wallet.json ]; then
+  echo ">>> Initializing wallet..."
+  linera wallet init --faucet="$LINERA_FAUCET_URL" || true
 fi
 
-# Obtain chain + owner if not provided
-if [ -z "${CHAIN_ID:-}" ] || [ -z "${OWNER_ID:-}" ]; then
-  echo "Requesting new chain from faucet..."
-  read -r CHAIN_ID OWNER_ID < <(linera wallet request-chain --faucet "$FAUCET_URL")
-else
-  echo "Using provided chain/app identifiers."
-fi
+echo ">>> Requesting chain..."
+linera wallet request-chain --faucet="$LINERA_FAUCET_URL" || true
 
-echo "Chain ID : ${CHAIN_ID}"
-echo "Owner ID : ${OWNER_ID:-unknown}"
+echo ">>> Building Rust contract..."
+cd /build || exit 1
+rustup target add wasm32-unknown-unknown || true
+cargo build --release --target wasm32-unknown-unknown
 
-# Build contract and service WASM
-echo "Building WASM artifacts..."
-cargo build --release --target wasm32-unknown-unknown --manifest-path "$SCRIPT_DIR/Cargo.toml"
+echo ">>> Publishing and creating application..."
+LINERA_APPLICATION_ID=$(linera --wait-for-outgoing-messages \
+  publish-and-create \
+  /build/target/wasm32-unknown-unknown/release/onchainchess_contract.wasm \
+  /build/target/wasm32-unknown-unknown/release/onchainchess_service.wasm)
+export VITE_LINERA_APPLICATION_ID=$LINERA_APPLICATION_ID
 
-MODULE_CONTRACT="$SCRIPT_DIR/target/wasm32-unknown-unknown/release/onchainchess_contract.wasm"
-MODULE_SERVICE="$SCRIPT_DIR/target/wasm32-unknown-unknown/release/onchainchess_service.wasm"
-
-if [ ! -f "$MODULE_CONTRACT" ] || [ ! -f "$MODULE_SERVICE" ]; then
-  echo "ERROR: Compiled WASM modules not found."
-  exit 1
-fi
-
-# Publish modules and create application unless an app was supplied
-if [ -z "${APP_ID:-}" ]; then
-  echo "Publishing modules to chain..."
-  MODULE_ID="$(linera publish-module "$MODULE_CONTRACT" "$MODULE_SERVICE")"
-  echo "Module ID: $MODULE_ID"
-
-  echo "Creating application on chain..."
-  APP_ID="$(linera create-application "$MODULE_ID" "$CHAIN_ID" --json-argument '{}')"
-else
-  echo "Skipping publish/create; using provided APP_ID."
-fi
-
-echo "Application ID: $APP_ID"
-
-# Write frontend environment
-ENV_FILE="$SCRIPT_DIR/web-frontend/.env"
-cat > "$ENV_FILE" <<EOF
-VITE_CHAIN_ID=$CHAIN_ID
-VITE_APP_ID=$APP_ID
-VITE_OWNER_ID=$FRONTEND_OWNER_ID
-VITE_PORT=$SERVICE_PORT
-VITE_HOST=localhost
+echo ">>> Creating frontend .env file..."
+cat > /build/web-frontend/.env <<EOF
+VITE_LINERA_APPLICATION_ID=$LINERA_APPLICATION_ID
+VITE_LINERA_FAUCET_URL=$LINERA_FAUCET_URL
 EOF
-echo "Wrote frontend env -> $ENV_FILE"
 
-# Start Linera service
-echo "Starting Linera service on port $SERVICE_PORT..."
-linera service --port "$SERVICE_PORT" > "$SCRIPT_DIR/backend.log" 2>&1 &
-SERVICE_PID=$!
+# Display startup summary
+echo ""
+echo "========================================"
+echo "♟️ OnChain Chess - On-Chain Game"
+echo "========================================"
+echo ""
+echo "✅ Linera Network: Running"
+echo "✅ Application ID: $LINERA_APPLICATION_ID"
+echo "✅ Faucet URL: $LINERA_FAUCET_URL"
+echo "✅ Frontend: http://localhost:5173"
+echo ""
+echo "📝 Next Steps:"
+echo "1. Open http://localhost:5173 in your browser"
+echo "2. Create or join a match"
+echo "3. Play Chess on-chain!"
+echo ""
+echo "========================================"
+echo ""
 
-# Start frontend
-echo "Installing frontend deps..."
-cd "$SCRIPT_DIR/web-frontend"
+echo ">>> Installing frontend dependencies..."
+cd /build/web-frontend || exit 1
+
+# Load nvm and use Node.js
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+
+# Ensure Node.js is available (should already be installed in Dockerfile)
+if ! command -v node &> /dev/null; then
+  echo ">>> Node.js not found, installing..."
+  nvm install lts/krypton
+  nvm use lts/krypton
+fi
+
+# Verify Node.js version
+NODE_VERSION=$(node --version || echo "unknown")
+echo ">>> Using Node.js: $NODE_VERSION"
+
+# Always run npm install to ensure all dependencies (including new ones) are installed
 npm install
-echo "Starting frontend on port $FRONTEND_PORT..."
-HOST=0.0.0.0 PORT="$FRONTEND_PORT" BROWSER=none npm run dev > "$SCRIPT_DIR/frontend.log" 2>&1 &
-FRONTEND_PID=$!
 
-sleep 3
-echo "======================================"
-echo "Frontend URL: http://localhost:${FRONTEND_PORT}/${CHAIN_ID}?app=${APP_ID}&owner=${FRONTEND_OWNER_ID}&port=${SERVICE_PORT}"
-echo "GraphQL URL : http://localhost:${SERVICE_PORT}/chains/${CHAIN_ID}/applications/${APP_ID}"
-echo "Frontend log: $SCRIPT_DIR/frontend.log"
-echo "Backend log : $SCRIPT_DIR/backend.log"
-echo "======================================"
-
-cleanup() {
-  echo "Stopping services..."
-  kill "$SERVICE_PID" "$FRONTEND_PID" 2>/dev/null || true
-}
-
-trap cleanup INT TERM
-wait
+echo ">>> Starting frontend development server..."
+echo ""
+echo "========================================"
+echo "🎮 Application is starting up!"
+echo "========================================"
+echo ""
+echo "Frontend is compiling... Please wait for 'Compiled successfully!' message"
+echo ""
+echo "Once compiled, access the app at:"
+echo "  🌐 http://localhost:5173"
+echo ""
+echo "To view logs: docker compose logs -f app"
+echo "To stop: docker compose down"
+echo ""
+echo "========================================"
+echo ""
+npm start
