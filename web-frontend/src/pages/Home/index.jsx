@@ -45,11 +45,44 @@ const Home = () => {
       <div className={styles.container}>
         <div className={styles.header}>
           <h1 className={styles.title}>♟️ OnChain Chess</h1>
-          <p className={styles.subtitle}>Decentralized Chess on Linera</p>
+          <p className={styles.subtitle}>Decentralized Chess on Linera Blockchain</p>
+          <div className={styles.features}>
+            <div className={styles.feature}>
+              <span className={styles.featureIcon}>🔒</span>
+              <span className={styles.featureText}>Fully On-Chain</span>
+            </div>
+            <div className={styles.feature}>
+              <span className={styles.featureIcon}>⚡</span>
+              <span className={styles.featureText}>Instant Finality</span>
+            </div>
+            <div className={styles.feature}>
+              <span className={styles.featureIcon}>🌐</span>
+              <span className={styles.featureText}>Decentralized</span>
+            </div>
+          </div>
         </div>
 
         <div className={styles.content}>
+          <div className={styles.welcomeCard}>
+            <h2 className={styles.welcomeTitle}>Welcome to OnChain Chess!</h2>
+            <p className={styles.welcomeText}>
+              Experience chess like never before on the Linera blockchain. Every move is validated on-chain,
+              ensuring fair play and transparency. Challenge your friends and enjoy instant finality with
+              microchain technology.
+            </p>
+            <div className={styles.howToPlay}>
+              <h3 className={styles.howToTitle}>How to Play:</h3>
+              <ol className={styles.instructions}>
+                <li>Enter your name below</li>
+                <li>Create a room or join a friend's room</li>
+                <li>Share your room ID with your opponent</li>
+                <li>Start playing chess on the blockchain!</li>
+              </ol>
+            </div>
+          </div>
+
           <div className={styles.name_block}>
+            <label className={styles.inputLabel}>Your Name</label>
             <input
               className={styles.input}
               value={playerName}
@@ -66,7 +99,7 @@ const Home = () => {
 
           <div className={styles.btn_container}>
             <Button
-              name="Play with Friend"
+              name="🎮 Play with Friend"
               type="friend"
               disabled={!canOpenMenus}
               onClick={() => setFriendMenuOpen(true)}

@@ -1,6 +1,6 @@
 .container {
   min-height: 100vh;
-  background: linear-gradient(135deg, #87CEEB 0%, #B0E0E6 50%, #FFFFFF 100%);
+  background: linear-gradient(135deg, #a8e6cf 0%, #88d8a3 50%, #6bc88a 100%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -12,9 +12,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #1E90FF;
+  color: #2d8659;
   font-size: 1.5rem;
-  background: linear-gradient(135deg, #87CEEB 0%, #B0E0E6 50%, #FFFFFF 100%);
+  background: linear-gradient(135deg, #a8e6cf 0%, #88d8a3 50%, #6bc88a 100%);
 }
 
 .result_card {
@@ -30,7 +30,7 @@
 .title {
   font-size: 3rem;
   font-weight: bold;
-  color: #1E90FF;
+  color: #2d8659;
   margin-bottom: 2rem;
   text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
 }
@@ -49,13 +49,13 @@
 
 .player {
   padding: 0.5rem 1rem;
-  background: #F0F8FF;
+  background: #e8f5e9;
   border-radius: 6px;
 }
 
 .playerLabel {
   font-weight: bold;
-  color: #4682B4;
+  color: #4a9d6f;
   margin-right: 0.5rem;
 }
 
