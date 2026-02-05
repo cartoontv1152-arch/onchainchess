@@ -10,9 +10,10 @@ use linera_sdk::{
 };
 use onchainchess::{
     ChessAbi, CrossChainMessage, Game, InstantiationArgument, MatchStatus, Operation, PlayerInfo,
-    ChessMove, Color, MoveRecord, ChessParameters, PieceType, Square,
+    ChessMove, Color, MoveRecord, ChessParameters, Square,
 };
-use shakmaty::{Chess, Position, Square as ShakSquare, Role, Move, MoveKind, CastlingMode};
+use shakmaty::{Chess, Position, Square as ShakSquare, Move};
+use shakmaty::fen::Fen;
 
 linera_sdk::contract!(ChessContract);
 
@@ -26,25 +27,9 @@ impl WithContractAbi for ChessContract {
 }
 
 impl ChessContract {
-    fn is_host(&mut self, game: &Game) -> bool {
-        game.host_chain_id == self.runtime.chain_id().to_string()
-    }
-
-    fn opponent_chain_id(&mut self, game: &Game) -> Option<ChainId> {
-        let self_chain = self.runtime.chain_id().to_string();
-        game.players
-            .iter()
-            .find(|p| p.chain_id != self_chain)
-            .and_then(|p| p.chain_id.parse().ok())
-    }
-
     fn reset_local_state(&mut self) {
         self.state.my_ready.set(false);
         self.state.opponent_ready.set(false);
-    }
-
-    fn can_play(&self, game: &Game) -> bool {
-        game.status == MatchStatus::Active && game.players.len() == 2
     }
 
     // Convert our Square to shakmaty Square
@@ -54,8 +39,8 @@ impl ChessContract {
         }
         // shakmaty uses File and Rank enums, convert from u8
         use shakmaty::{File, Rank};
-        let file = File::from_index(sq.file as usize).map_err(|_| "Invalid file".to_string())?;
-        let rank = Rank::from_index(sq.rank as usize).map_err(|_| "Invalid rank".to_string())?;
+        let file = File::new(sq.file as u32);
+        let rank = Rank::new(sq.rank as u32);
         Ok(ShakSquare::from_coords(file, rank))
     }
 
@@ -70,23 +55,23 @@ impl ChessContract {
         // Find the move in legal moves
         let legal_moves = position.legal_moves();
         for legal_move in legal_moves {
-            if legal_move.from() == from && legal_move.to() == to {
-                // Check promotion
-                if let Some(promo) = chess_move.promotion {
-                    if let MoveKind::Promotion { role } = legal_move.kind() {
-                        let expected_role = match promo {
-                            PieceType::Queen => Role::Queen,
-                            PieceType::Rook => Role::Rook,
-                            PieceType::Bishop => Role::Bishop,
-                            PieceType::Knight => Role::Knight,
-                            _ => return Err("Invalid promotion piece".to_string()),
-                        };
-                        if role == expected_role {
-                            return Ok(legal_move);
-                        }
+            // legal_move.from() returns Option<Square>, legal_move.to() returns Square
+            if legal_move.from() == Some(from) && legal_move.to() == to {
+                // For promotion moves, check if target is on promotion rank (rank 0 or 7)
+                // In shakmaty, we can check the rank index
+                let target_rank = to.rank();
+                let rank_index = target_rank as u32;
+                
+                if let Some(_promo) = chess_move.promotion {
+                    // Promotion move - must be to rank 0 (First) or 7 (Eighth)
+                    if rank_index == 0 || rank_index == 7 {
+                        return Ok(legal_move);
                     }
-                } else if !matches!(legal_move.kind(), MoveKind::Promotion { .. }) {
-                    return Ok(legal_move);
+                } else {
+                    // Non-promotion move - must not be to promotion rank
+                    if rank_index != 0 && rank_index != 7 {
+                        return Ok(legal_move);
+                    }
                 }
             }
         }
@@ -105,31 +90,30 @@ impl ChessContract {
             let legal_moves = position.legal_moves();
             let mut found_move = None;
             for legal_move in legal_moves {
-                if legal_move.from() == from && legal_move.to() == to {
-                    // Check promotion match
-                    if let Some(promo) = move_record.chess_move.promotion {
-                        if let MoveKind::Promotion { role } = legal_move.kind() {
-                            let expected_role = match promo {
-                                PieceType::Queen => Role::Queen,
-                                PieceType::Rook => Role::Rook,
-                                PieceType::Bishop => Role::Bishop,
-                                PieceType::Knight => Role::Knight,
-                                _ => continue,
-                            };
-                            if role == expected_role {
-                                found_move = Some(legal_move);
-                                break;
-                            }
+                // legal_move.from() returns Option<Square>, legal_move.to() returns Square
+                if legal_move.from() == Some(from) && legal_move.to() == to {
+                    // Check if this matches a promotion move
+                    let target_rank = to.rank();
+                    let rank_index = target_rank as u32;
+                    
+                    if move_record.chess_move.promotion.is_some() {
+                        // If promotion is specified, check if move is to promotion rank (0 or 7)
+                        if rank_index == 0 || rank_index == 7 {
+                            found_move = Some(legal_move);
+                            break;
                         }
-                    } else if !matches!(legal_move.kind(), MoveKind::Promotion { .. }) {
-                        found_move = Some(legal_move);
-                        break;
+                    } else {
+                        // Not a promotion move
+                        if rank_index != 0 && rank_index != 7 {
+                            found_move = Some(legal_move);
+                            break;
+                        }
                     }
                 }
             }
             
             let chess_move = found_move.ok_or_else(|| "Invalid move in history".to_string())?;
-            position = position.play(&chess_move).map_err(|e| format!("Failed to apply move: {:?}", e))?;
+            position = position.play(chess_move).map_err(|e| format!("Failed to apply move: {:?}", e))?;
         }
         
         Ok(position)
@@ -137,14 +121,15 @@ impl ChessContract {
 
     // Compute FEN from position
     fn compute_fen(position: &Chess) -> String {
-        position.to_string()
+        use shakmaty::EnPassantMode;
+        Fen::from_position(position, EnPassantMode::Always).to_string()
     }
 
     // Detect game end conditions and determine winner
     // Returns (status, winner_chain_id) where winner_chain_id is None for draws
     fn detect_game_end(
         position: &Chess,
-        player_color: Color,
+        _player_color: Color,
         game: &Game,
         self_chain: &str,
     ) -> Option<(MatchStatus, Option<String>)> {
@@ -233,6 +218,11 @@ impl Contract for ChessContract {
             }
 
             Operation::MakeMove { chess_move } => {
+                // Extract values before getting mutable borrow
+                    let self_chain = self.runtime.chain_id().to_string();
+                let chain_id_for_message = self.runtime.chain_id();
+                let timestamp = self.runtime.system_time().micros().to_string();
+                
                 // Use get_mut() to modify game state through View system
                 let game = if let Some(game) = self.state.game.get_mut() {
                     game
@@ -240,13 +230,14 @@ impl Contract for ChessContract {
                     panic!("Match not found");
                 };
 
-                if !self.can_play(game) {
+                // Check if game can be played (read-only check)
+                let can_play = game.status == MatchStatus::Active && game.players.len() == 2;
+                if !can_play {
                     panic!("Match not ready");
                 }
 
                 // Determine player color based on chain_id
-                let self_chain = self.runtime.chain_id().to_string();
-                let is_host = self.is_host(game);
+                let is_host = game.host_chain_id == self_chain;
                 let player_color = if is_host {
                     Color::White
                 } else {
@@ -271,7 +262,7 @@ impl Contract for ChessContract {
                 };
 
                 // Apply move
-                position = match position.play(&shakmaty_move) {
+                position = match position.play(shakmaty_move) {
                     Ok(new_pos) => new_pos,
                     Err(e) => panic!("Failed to apply move: {:?}", e),
                 };
@@ -291,7 +282,7 @@ impl Contract for ChessContract {
                     move_number,
                     chess_move: chess_move.clone(),
                     player_color,
-                    timestamp: self.runtime.system_time().micros().to_string(),
+                    timestamp: timestamp.clone(),
                     fen_after: fen_after.clone(),
                 };
 
@@ -302,25 +293,32 @@ impl Contract for ChessContract {
                 } else {
                     Color::White
                 };
-                game.last_move_at = Some(self.runtime.system_time().micros().to_string());
+                game.last_move_at = Some(timestamp);
                 game.board = fen_after; // Update board FEN
 
+                // Get opponent chain ID before sending message
+                let opponent_chain_id = game.players
+                    .iter()
+                    .find(|p| p.chain_id != self_chain)
+                    .and_then(|p| p.chain_id.parse().ok());
+
                 // Send move to opponent via cross-chain message
-                // Need to get opponent chain ID - use get() for read-only access
-                if let Some(game_ref) = self.state.game.get() {
-                    if let Some(opponent) = self.opponent_chain_id(game_ref) {
-                        self.runtime.send_message(
-                            opponent,
-                            CrossChainMessage::MoveSync {
-                                chess_move,
-                                player_chain_id: self.runtime.chain_id(),
-                            },
-                        );
-                    }
+                if let Some(opponent) = opponent_chain_id {
+                    self.runtime.send_message(
+                        opponent,
+                        CrossChainMessage::MoveSync {
+                            chess_move,
+                            player_chain_id: chain_id_for_message,
+                        },
+                    );
                 }
             }
 
             Operation::ResignMatch => {
+                // Extract values before getting mutable borrow
+                    let self_chain = self.runtime.chain_id().to_string();
+                let chain_id_for_message = self.runtime.chain_id();
+                
                 // Use get_mut() to modify game state through View system
                 let game = if let Some(game) = self.state.game.get_mut() {
                     game
@@ -331,8 +329,7 @@ impl Contract for ChessContract {
                 game.status = MatchStatus::Ended;
                 
                 // Determine winner based on who resigned
-                let self_chain = self.runtime.chain_id().to_string();
-                let is_host = self.is_host(game);
+                let is_host = game.host_chain_id == self_chain;
                 if is_host {
                     // Host resigned, guest wins
                     if let Some(guest) = game.players.iter().find(|p| p.chain_id != self_chain) {
@@ -343,20 +340,28 @@ impl Contract for ChessContract {
                     game.winner_chain_id = Some(game.host_chain_id.clone());
                 }
 
-                // Notify opponent - use get() for read-only access to get opponent chain ID
-                if let Some(game_ref) = self.state.game.get() {
-                    if let Some(opponent) = self.opponent_chain_id(game_ref) {
-                        self.runtime.send_message(
-                            opponent,
-                            CrossChainMessage::ResignNotice {
-                                player_chain_id: self.runtime.chain_id(),
-                            },
-                        );
-                    }
+                // Get opponent chain ID
+                let opponent_chain_id = game.players
+                    .iter()
+                    .find(|p| p.chain_id != self_chain)
+                    .and_then(|p| p.chain_id.parse().ok());
+
+                // Notify opponent
+                if let Some(opponent) = opponent_chain_id {
+                    self.runtime.send_message(
+                        opponent,
+                        CrossChainMessage::ResignNotice {
+                            player_chain_id: chain_id_for_message,
+                        },
+                    );
                 }
             }
 
             Operation::EndGame { status } => {
+                // Extract values before getting mutable borrow
+                    let self_chain = self.runtime.chain_id().to_string();
+                let chain_id_for_message = self.runtime.chain_id();
+                
                 // Use get_mut() to modify game state through View system
                 let game = if let Some(game) = self.state.game.get_mut() {
                     game
@@ -368,22 +373,25 @@ impl Contract for ChessContract {
                 
                 // Determine winner if game ended
                 if status == MatchStatus::Ended {
-                    let self_chain = self.runtime.chain_id().to_string();
                     // For now, set winner based on last move or other logic
                     // This can be enhanced with checkmate detection
                 }
 
-                // Notify opponent - use get() for read-only access to get opponent chain ID
-                if let Some(game_ref) = self.state.game.get() {
-                    if let Some(opponent) = self.opponent_chain_id(game_ref) {
-                        self.runtime.send_message(
-                            opponent,
-                            CrossChainMessage::GameEndNotice {
-                                player_chain_id: self.runtime.chain_id(),
-                                status,
-                            },
-                        );
-                    }
+                // Get opponent chain ID
+                let opponent_chain_id = game.players
+                    .iter()
+                    .find(|p| p.chain_id != self_chain)
+                    .and_then(|p| p.chain_id.parse().ok());
+
+                // Notify opponent
+                if let Some(opponent) = opponent_chain_id {
+                    self.runtime.send_message(
+                        opponent,
+                        CrossChainMessage::GameEndNotice {
+                            player_chain_id: chain_id_for_message,
+                            status,
+                        },
+                    );
                 }
             }
         }
@@ -395,6 +403,9 @@ impl Contract for ChessContract {
                 player_chain_id,
                 player_name,
             } => {
+                // Extract values before getting mutable borrow
+                    let self_chain = self.runtime.chain_id().to_string();
+                
                 // Use get_mut() to modify game state through View system
                 let game = if let Some(game) = self.state.game.get_mut() {
                     game
@@ -402,7 +413,9 @@ impl Contract for ChessContract {
                     panic!("Match not found");
                 };
 
-                if !self.is_host(game) {
+                // Check if host (read-only check)
+                let is_host = game.host_chain_id == self_chain;
+                if !is_host {
                     panic!("Only host can accept joins");
                 }
                 if game.status != MatchStatus::WaitingForPlayer {
@@ -417,7 +430,10 @@ impl Contract for ChessContract {
                     name: player_name,
                 });
                 game.status = MatchStatus::Active;
-                self.reset_local_state();
+                
+                // Reset local state and set notification
+                self.state.my_ready.set(false);
+                self.state.opponent_ready.set(false);
                 self.state.last_notification.set(Some("Player joined".to_string()));
                 
                 // Need to clone game for the message since we can't move it
@@ -440,6 +456,10 @@ impl Contract for ChessContract {
                 chess_move,
                 player_chain_id: _,
             } => {
+                // Extract values before getting mutable borrow
+                    let self_chain = self.runtime.chain_id().to_string();
+                let timestamp = self.runtime.system_time().micros().to_string();
+                
                 // Use get_mut() to modify game state through View system
                 let game = if let Some(game) = self.state.game.get_mut() {
                     game
@@ -447,13 +467,14 @@ impl Contract for ChessContract {
                     return; // Match not found, skip
                 };
 
-                if !self.can_play(game) {
+                // Check if game can be played (read-only check)
+                let can_play = game.status == MatchStatus::Active && game.players.len() == 2;
+                if !can_play {
                     return;
                 }
 
                 // Determine opponent color
-                let self_chain = self.runtime.chain_id().to_string();
-                let is_host = self.is_host(game);
+                let is_host = game.host_chain_id == self_chain;
                 let opponent_color = if is_host {
                     Color::Black
                 } else {
@@ -478,7 +499,7 @@ impl Contract for ChessContract {
                 };
 
                 // Apply move
-                position = match position.play(&shakmaty_move) {
+                position = match position.play(shakmaty_move) {
                     Ok(new_pos) => new_pos,
                     Err(_) => return, // Failed to apply, skip
                 };
@@ -498,7 +519,7 @@ impl Contract for ChessContract {
                     move_number,
                     chess_move: chess_move.clone(),
                     player_color: opponent_color,
-                    timestamp: self.runtime.system_time().micros().to_string(),
+                    timestamp: timestamp.clone(),
                     fen_after: fen_after.clone(),
                 };
 
@@ -509,7 +530,7 @@ impl Contract for ChessContract {
                 } else {
                     Color::White
                 };
-                game.last_move_at = Some(self.runtime.system_time().micros().to_string());
+                game.last_move_at = Some(timestamp);
                 game.board = fen_after; // Update board FEN
             }
 
@@ -523,7 +544,7 @@ impl Contract for ChessContract {
 
                 game.status = MatchStatus::Ended;
                 // Winner is the one who didn't resign
-                let self_chain = self.runtime.chain_id().to_string();
+                    let self_chain = self.runtime.chain_id().to_string();
                 game.winner_chain_id = Some(self_chain);
                 self.state.last_notification.set(Some("Opponent resigned".to_string()));
             }

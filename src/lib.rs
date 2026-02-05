@@ -1,7 +1,7 @@
 #![cfg_attr(target_arch = "wasm32", no_main)]
 
 use serde::{Deserialize, Serialize};
-use linera_sdk::linera_base_types::{ChainId, ContractAbi, ServiceAbi};
+use linera_sdk::linera_base_types::ChainId;
 use linera_sdk::abi::{ContractAbi as LineraContractAbi, ServiceAbi as LineraServiceAbi};
 use async_graphql::{Enum, InputObject, SimpleObject, Request, Response};
 
