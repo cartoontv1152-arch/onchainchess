@@ -1,7 +1,9 @@
-import React from "react";
+import React, { useState } from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { LineraContextProvider } from "./context/LineraContext.jsx";
+import { ToastProvider } from "./components/ToastContainer";
+import SplashScreen from "./components/SplashScreen";
 import Home from "./pages/Home";
 import Room from "./pages/Room";
 import Result from "./pages/Result";
@@ -43,18 +45,30 @@ class ErrorBoundary extends React.Component {
   }
 }
 
+const App = () => {
+  const [showSplash, setShowSplash] = useState(true);
+
+  if (showSplash) {
+    return <SplashScreen onComplete={() => setShowSplash(false)} />;
+  }
+
+  return (
+    <ErrorBoundary>
+      <BrowserRouter>
+        <ToastProvider>
+          <LineraContextProvider>
+            <Routes>
+              <Route path="/" element={<Home />} />
+              <Route path="/room/:id" element={<Room />} />
+              <Route path="/result" element={<Result />} />
+            </Routes>
+          </LineraContextProvider>
+        </ToastProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
+  );
+};
+
 const root = ReactDOM.createRoot(document.getElementById("root"));
 
-root.render(
-  <ErrorBoundary>
-    <BrowserRouter>
-      <LineraContextProvider>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/room/:id" element={<Room />} />
-          <Route path="/result" element={<Result />} />
-        </Routes>
-      </LineraContextProvider>
-    </BrowserRouter>
-  </ErrorBoundary>
-);
+root.render(<App />);

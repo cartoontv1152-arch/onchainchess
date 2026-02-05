@@ -2,6 +2,7 @@ import { useContext, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Button from "../../components/Button";
 import { LineraContext } from "../../context/LineraContext.jsx";
+import { useToast } from "../../components/ToastContainer";
 import styles from "./styles.module.css";
 
 const PLAYER_NAME_STORAGE_KEY = "chess_player_name";
@@ -9,6 +10,7 @@ const PLAYER_NAME_STORAGE_KEY = "chess_player_name";
 const Home = () => {
   const navigate = useNavigate();
   const { ready, initError, chainId, createMatch } = useContext(LineraContext);
+  const { showToast } = useToast();
   const [friendMenuOpen, setFriendMenuOpen] = useState(false);
   const [hostChainIdInput, setHostChainIdInput] = useState("");
   const [playerName, setPlayerName] = useState(() => {
@@ -101,14 +103,36 @@ const Home = () => {
                 <div className={styles.section}>
                   <div className={styles.section_title}>CREATE ROOM</div>
                   <div className={styles.section_hint}>
-                    Your room id: <span className={styles.mono}>{chainId}</span>
+                    Your room id:
+                  </div>
+                  <div className={styles.roomIdContainer}>
+                    <span className={styles.mono}>{chainId}</span>
+                    <button
+                      className={styles.copyButton}
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(chainId);
+                          showToast("Room ID copied to clipboard!", "success");
+                        } catch (err) {
+                          showToast("Failed to copy room ID", "error");
+                        }
+                      }}
+                      title="Copy Room ID"
+                    >
+                      📋 Copy
+                    </button>
                   </div>
                   <Button
                     name="Create Room"
                     onClick={async () => {
-                      await createMatch(normalizedPlayerName);
-                      setFriendMenuOpen(false);
-                      navigate(`/room/${chainId}`);
+                      try {
+                        await createMatch(normalizedPlayerName);
+                        showToast("Room created successfully!", "success");
+                        setFriendMenuOpen(false);
+                        navigate(`/room/${chainId}`);
+                      } catch (error) {
+                        showToast(`Failed to create room: ${error.message}`, "error");
+                      }
                     }}
                   />
                 </div>
@@ -120,12 +144,29 @@ const Home = () => {
                   <div className={styles.section_hint}>
                     Enter host room id and join.
                   </div>
-                  <input
-                    className={styles.input}
-                    value={hostChainIdInput}
-                    onChange={(e) => setHostChainIdInput(e.target.value)}
-                    placeholder="Host chain id"
-                  />
+                  <div className={styles.inputContainer}>
+                    <input
+                      className={styles.input}
+                      value={hostChainIdInput}
+                      onChange={(e) => setHostChainIdInput(e.target.value)}
+                      placeholder="Paste host room id here"
+                    />
+                    <button
+                      className={styles.pasteButton}
+                      onClick={async () => {
+                        try {
+                          const text = await navigator.clipboard.readText();
+                          setHostChainIdInput(text);
+                          showToast("Room ID pasted!", "success");
+                        } catch (err) {
+                          showToast("Failed to paste from clipboard", "error");
+                        }
+                      }}
+                      title="Paste Room ID"
+                    >
+                      📥 Paste
+                    </button>
+                  </div>
                   <Button
                     name="Join Room"
                     disabled={!canJoin}
@@ -134,6 +175,7 @@ const Home = () => {
                       setFriendMenuOpen(false);
                       const name = normalizedPlayerName;
                       const q = name ? `?name=${encodeURIComponent(name)}` : "";
+                      showToast("Joining room...", "info");
                       navigate(`/room/${normalizedHostChainId}${q}`);
                     }}
                   />

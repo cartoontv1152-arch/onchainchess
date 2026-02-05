@@ -2,7 +2,7 @@
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #a8e6cf 0%, #88d8a3 50%, #6bc88a 100%);
 }
 
 .app-header {
@@ -24,7 +24,7 @@
 .app-title {
   font-size: 2rem;
   font-weight: bold;
-  color: #667eea;
+  color: #2d8659;
   margin: 0;
 }
 
@@ -96,7 +96,7 @@
 
 .welcome-content h2 {
   font-size: 2rem;
-  color: #667eea;
+  color: #2d8659;
   margin-bottom: 1rem;
 }
 
@@ -150,7 +150,7 @@
 
 .game-selector-header h2 {
   font-size: 1.8rem;
-  color: #667eea;
+  color: #2d8659;
   margin: 0;
 }
 
@@ -168,7 +168,7 @@
 
 .game-list-title {
   font-size: 1.5rem;
-  color: #667eea;
+  color: #2d8659;
   margin-bottom: 1rem;
 }
 
@@ -201,7 +201,7 @@
 
 .game-id {
   font-weight: bold;
-  color: #667eea;
+  color: #2d8659;
   margin-bottom: 0.5rem;
 }
 
@@ -285,7 +285,7 @@
 
 .game-info h3 {
   font-size: 1.5rem;
-  color: #667eea;
+  color: #2d8659;
   margin-bottom: 1rem;
 }
 
@@ -438,7 +438,7 @@
 
 .move-history-title {
   font-size: 1.2rem;
-  color: #667eea;
+  color: #2d8659;
   margin-bottom: 1rem;
   font-weight: 600;
 }
@@ -468,7 +468,7 @@
 
 .move-number {
   font-weight: 600;
-  color: #667eea;
+  color: #2d8659;
   min-width: 30px;
 }
 
@@ -525,7 +525,7 @@
 
 .wallet-selector-title {
   font-size: 1.5rem;
-  color: #667eea;
+  color: #2d8659;
   margin-bottom: 1.5rem;
   text-align: center;
 }
@@ -640,7 +640,7 @@
   text-align: center;
   padding: 0.75rem;
   background: #f9fafb;
-  color: #667eea;
+  color: #2d8659;
   text-decoration: none;
   border-radius: 0.5rem;
   font-weight: 600;

@@ -1,6 +1,7 @@
 import { useEffect, useContext, useRef } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { LineraContext } from "../../context/LineraContext.jsx";
+import { useToast } from "../../components/ToastContainer";
 import ChessBoard from "../../components/ChessBoard";
 import { squareToAlgebraic, algebraicToSquare } from "../../utils/chessUtils";
 import styles from "./styles.module.css";
@@ -25,6 +26,7 @@ const Room = () => {
     joinMatch,
     resignMatch,
   } = useContext(LineraContext);
+  const { showToast } = useToast();
   const hasJoinedRef = useRef(false);
 
   useEffect(() => {
@@ -71,10 +73,11 @@ const Room = () => {
     try {
       console.log("Handling move:", chessMove);
       await makeMove(chessMove);
+      showToast("Move submitted successfully!", "success");
       // Move will trigger refresh automatically
     } catch (error) {
       console.error("Error making move:", error);
-      alert(`Move failed: ${error?.message || error}`);
+      showToast(`Move failed: ${error?.message || error}`, "error");
     }
   };
 
@@ -82,8 +85,10 @@ const Room = () => {
     if (window.confirm("Are you sure you want to resign?")) {
       try {
         await resignMatch();
+        showToast("You have resigned from the game", "info");
       } catch (error) {
         console.error("Error resigning:", error);
+        showToast(`Failed to resign: ${error?.message || error}`, "error");
       }
     }
   };
@@ -171,15 +176,6 @@ const Room = () => {
                   {isPlayerTurn() ? "✅ Your turn - Click or drag pieces!" : "⏳ Opponent's turn"}
                 </div>
               )}
-              <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#666', padding: '0.5rem', background: '#f0f0f0', borderRadius: '4px' }}>
-                <div>Debug Info:</div>
-                <div>canMove: {String(isPlayerTurn())}</div>
-                <div>status: {String(game.status)}</div>
-                <div>currentTurn: {String(currentTurn || 'null')}</div>
-                <div>playerColor: {String(getPlayerColor() || 'null')}</div>
-                <div>isHost: {String(isHost)}</div>
-                <div>moveHistory length: {game.moveHistory?.length || 0}</div>
-              </div>
             </>
           )}
         </div>
@@ -193,7 +189,26 @@ const Room = () => {
       {!opponentChainId && (
         <div className={styles.waiting}>
           <div className={styles.waiting_text}>Waiting for opponent to join...</div>
-          <div className={styles.room_id}>Room ID: {chainId}</div>
+          <div className={styles.roomIdSection}>
+            <div className={styles.room_id_label}>Share this Room ID:</div>
+            <div className={styles.roomIdContainer}>
+              <div className={styles.room_id}>{chainId}</div>
+              <button
+                className={styles.copyButton}
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(chainId);
+                    showToast("Room ID copied to clipboard!", "success");
+                  } catch (err) {
+                    showToast("Failed to copy room ID", "error");
+                  }
+                }}
+                title="Copy Room ID"
+              >
+                📋 Copy
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
