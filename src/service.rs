@@ -1,207 +1,154 @@
 #![cfg_attr(target_arch = "wasm32", no_main)]
 
 mod state;
-use self::state::ChessState;
-use onchainchess::{ChessAbi, ChessOperation, GameState, ChessMove};
-use async_graphql::{Object, Request, Response, Schema, SimpleObject};
-use linera_sdk::{Service, ServiceRuntime};
-use linera_sdk::abi::WithServiceAbi;
-use linera_sdk::linera_base_types::AccountOwner;
-use linera_sdk::views::View;
 
 use std::sync::Arc;
-use tokio::sync::Mutex;
+
+use async_graphql::{EmptySubscription, Object, Request, Response, Schema};
+use linera_sdk::{linera_base_types::WithServiceAbi, views::View, Service, ServiceRuntime};
+use onchainchess::{
+    ChessAbi, ChessMove, Game, MatchStatus, Operation, ChessParameters, Color,
+};
+
+use self::state::ChessState;
 
 linera_sdk::service!(ChessService);
+
+pub struct ChessService {
+    state: ChessState,
+    runtime: Arc<ServiceRuntime<Self>>,
+}
+
 impl WithServiceAbi for ChessService {
     type Abi = ChessAbi;
 }
 
-pub struct ChessService {
-    runtime: Arc<ServiceRuntime<Self>>,
-}
-
 impl Service for ChessService {
-    type Parameters = ();
+    type Parameters = ChessParameters;
 
     async fn new(runtime: ServiceRuntime<Self>) -> Self {
-        Self {
+        let state = ChessState::load(runtime.root_view_storage_context())
+            .await
+            .expect("Failed to load state");
+        ChessService {
+            state,
             runtime: Arc::new(runtime),
         }
     }
 
     async fn handle_query(&self, request: Request) -> Response {
-        // Reload state from storage on each query to get latest updates from contract
-        // This ensures we always have fresh data from the blockchain
-        let context = self.runtime.root_view_storage_context();
-        log::info!("Service: Loading state from storage context");
-        let state = match ChessState::load(context.clone()).await {
-            Ok(state) => {
-                // Access game_counter to trigger loading from storage
-                let counter = *state.game_counter.get();
-                log::info!("Service: Loaded state, game_counter = {}", counter);
-                state
-            },
-            Err(e) => {
-                log::error!("Failed to reload ChessState: {:?}", e);
-                ChessState::create_empty(context)
-            }
-        };
-        
-        // Create a fresh Arc with the reloaded state for this query
-        let state_arc = Arc::new(Mutex::new(state));
-        
+        let game = self.state.game.get().clone();
+        let my_ready = self.state.my_ready.get().clone();
+        let opponent_ready = self.state.opponent_ready.get().clone();
+        let last_notification = self.state.last_notification.get().clone();
         let schema = Schema::build(
             QueryRoot {
-                state: Arc::clone(&state_arc),
-                runtime: Arc::clone(&self.runtime),
+                game,
+                chain_id: self.runtime.chain_id().to_string(),
+                my_ready,
+                opponent_ready,
+                last_notification,
             },
             MutationRoot {
-                runtime: Arc::clone(&self.runtime),
-                state: Arc::clone(&state_arc),
+                runtime: self.runtime.clone(),
             },
-            async_graphql::EmptySubscription,
+            EmptySubscription,
         )
         .finish();
         schema.execute(request).await
     }
 }
 
-#[derive(SimpleObject)]
-struct CreateGameResponse {
-    success: bool,
-    message: String,
-    game_id: Option<u64>,
-}
-
-#[derive(SimpleObject)]
-struct JoinGameResponse {
-    success: bool,
-    message: String,
-}
-
-#[derive(SimpleObject)]
-struct MakeMoveResponse {
-    success: bool,
-    message: String,
-}
-
-#[derive(SimpleObject)]
-struct ResignGameResponse {
-    success: bool,
-    message: String,
-}
-
 struct QueryRoot {
-    state: Arc<Mutex<ChessState>>,
-    runtime: Arc<ServiceRuntime<ChessService>>,
+    game: Option<Game>,
+    chain_id: String,
+    my_ready: bool,
+    opponent_ready: bool,
+    last_notification: Option<String>,
+}
+
+#[Object]
+impl QueryRoot {
+    async fn game(&self) -> Option<&Game> {
+        self.game.as_ref()
+    }
+
+    async fn match_status(&self) -> Option<MatchStatus> {
+        self.game.as_ref().map(|g| g.status)
+    }
+
+    async fn is_host(&self) -> bool {
+        self.game
+            .as_ref()
+            .map(|g| g.host_chain_id == self.chain_id)
+            .unwrap_or(false)
+    }
+
+    async fn opponent_chain_id(&self) -> Option<String> {
+        let game = self.game.as_ref()?;
+        game.players
+            .iter()
+            .find(|p| p.chain_id != self.chain_id)
+            .map(|p| p.chain_id.clone())
+    }
+
+    async fn current_turn(&self) -> Option<Color> {
+        self.game.as_ref().map(|g| g.current_turn)
+    }
+
+    async fn my_ready(&self) -> bool {
+        self.my_ready
+    }
+
+    async fn opponent_ready(&self) -> bool {
+        self.opponent_ready
+    }
+
+    async fn last_notification(&self) -> Option<String> {
+        self.last_notification.clone()
+    }
+
+    async fn move_history(&self) -> Vec<onchainchess::MoveRecord> {
+        self.game
+            .as_ref()
+            .map(|g| g.move_history.clone())
+            .unwrap_or_default()
+    }
 }
 
 struct MutationRoot {
     runtime: Arc<ServiceRuntime<ChessService>>,
-    state: Arc<Mutex<ChessState>>,
-}
-
-
-#[Object]
-impl QueryRoot {
-    async fn get_game(
-        &self,
-        _ctx: &async_graphql::Context<'_>,
-        game_id: u64,
-    ) -> Result<Option<GameState>, async_graphql::Error> {
-        let state = self.state.lock().await;
-        let result = state.get_game(game_id).await?;
-        log::info!("Query get_game({}): {:?}", game_id, result.as_ref().map(|g| g.game_id));
-        Ok(result)
-    }
-
-    async fn get_player_games(
-        &self,
-        _ctx: &async_graphql::Context<'_>,
-        player: AccountOwner,
-    ) -> Result<Vec<GameState>, async_graphql::Error> {
-        let state = self.state.lock().await;
-        let result = state.get_player_games(&player).await?;
-        log::info!("Query get_player_games({}): found {} games", player, result.len());
-        Ok(result)
-    }
-
-    async fn get_available_games(
-        &self,
-        _ctx: &async_graphql::Context<'_>,
-    ) -> Result<Vec<GameState>, async_graphql::Error> {
-        let state = self.state.lock().await;
-        let result = state.get_available_games().await?;
-        log::info!("Query get_available_games(): found {} games", result.len());
-        Ok(result)
-    }
 }
 
 #[Object]
 impl MutationRoot {
-    async fn create_game(
-        &self,
-        _ctx: &async_graphql::Context<'_>,
-        creator: AccountOwner,
-    ) -> Result<CreateGameResponse, async_graphql::Error> {
-        let operation = ChessOperation::CreateGame { creator };
-        self.runtime.schedule_operation(&operation);
-
-        Ok(CreateGameResponse {
-            success: true,
-            message: "Game creation scheduled".to_string(),
-            game_id: None,
-        })
+    async fn create_match(&self, host_name: String) -> String {
+        self.runtime
+            .schedule_operation(&Operation::CreateMatch { host_name: host_name.clone() });
+        format!("Match created by '{}'", host_name)
     }
 
-    async fn join_game(
-        &self,
-        _ctx: &async_graphql::Context<'_>,
-        game_id: u64,
-        player: AccountOwner,
-    ) -> Result<JoinGameResponse, async_graphql::Error> {
-        let operation = ChessOperation::JoinGame { game_id, player };
-        self.runtime.schedule_operation(&operation);
-
-        Ok(JoinGameResponse {
-            success: true,
-            message: "Join game scheduled".to_string(),
-        })
+    async fn join_match(&self, host_chain_id: String, player_name: String) -> String {
+        self.runtime.schedule_operation(&Operation::JoinMatch {
+            host_chain_id: host_chain_id.clone(),
+            player_name: player_name.clone(),
+        });
+        format!("Join request sent to {}", host_chain_id)
     }
 
-    async fn make_move(
-        &self,
-        _ctx: &async_graphql::Context<'_>,
-        game_id: u64,
-        player: AccountOwner,
-        chess_move: ChessMove,
-    ) -> Result<MakeMoveResponse, async_graphql::Error> {
-        let operation = ChessOperation::MakeMove {
-            game_id,
-            player,
-            chess_move,
-        };
-        self.runtime.schedule_operation(&operation);
-
-        Ok(MakeMoveResponse {
-            success: true,
-            message: "Move scheduled".to_string(),
-        })
+    async fn make_move(&self, chess_move: ChessMove) -> String {
+        self.runtime
+            .schedule_operation(&Operation::MakeMove { chess_move });
+        "Move scheduled".to_string()
     }
 
-    async fn resign_game(
-        &self,
-        _ctx: &async_graphql::Context<'_>,
-        game_id: u64,
-        player: AccountOwner,
-    ) -> Result<ResignGameResponse, async_graphql::Error> {
-        let operation = ChessOperation::ResignGame { game_id, player };
-        self.runtime.schedule_operation(&operation);
+    async fn resign_match(&self) -> String {
+        self.runtime.schedule_operation(&Operation::ResignMatch);
+        "Resignation scheduled".to_string()
+    }
 
-        Ok(ResignGameResponse {
-            success: true,
-            message: "Resignation scheduled".to_string(),
-        })
+    async fn end_game(&self, status: MatchStatus) -> String {
+        self.runtime.schedule_operation(&Operation::EndGame { status });
+        "Game end scheduled".to_string()
     }
 }

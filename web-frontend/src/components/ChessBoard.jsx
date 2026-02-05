@@ -1,69 +1,80 @@
 import React, { useEffect, useState } from 'react';
 import { Chessboard } from 'react-chessboard';
 import { Chess } from 'chess.js';
-import { squareToAlgebraic, algebraicToSquare, chessMoveToUci } from '../utils/chessUtils';
+import { squareToAlgebraic, algebraicToSquare } from '../utils/chessUtils';
 
-const ChessBoard = ({ game, player, onMove, isLoading }) => {
+const ChessBoard = ({ game, playerColor, onMove, isPlayerTurn }) => {
   const [gameState, setGameState] = useState(new Chess());
   const [moveFrom, setMoveFrom] = useState(null);
   const [possibleMoves, setPossibleMoves] = useState([]);
 
-  // Update game state when game prop changes
+  // Reconstruct board state from on-chain move history
+  // chess.js is used ONLY for UI rendering - validation happens on-chain
   useEffect(() => {
-    if (game && game.board) {
-      try {
-        const chess = new Chess(game.board);
-        setGameState(chess);
-      } catch (error) {
-        console.error('Error loading game state:', error);
-        // Fallback to starting position
-        setGameState(new Chess());
-      }
+    if (!game) {
+      setGameState(new Chess());
+      return;
     }
-  }, [game]);
 
-  // Apply moves from game history
-  useEffect(() => {
-    if (game && game.moveHistory && game.moveHistory.length > 0) {
-      const chess = new Chess();
-      
-      // Try to apply moves from history
+    const chess = new Chess();
+    
+    // Reconstruct from on-chain move history
+    if (game.moveHistory && game.moveHistory.length > 0) {
       try {
-        game.moveHistory.forEach((move) => {
-          const uci = chessMoveToUci(move);
-          if (uci && chess.move(uci)) {
-            // Move applied successfully
+        game.moveHistory.forEach((moveRecord) => {
+          if (!moveRecord.chessMove || !moveRecord.chessMove.from || !moveRecord.chessMove.to) return;
+          
+          const fromSquare = squareToAlgebraic(moveRecord.chessMove.from);
+          const toSquare = squareToAlgebraic(moveRecord.chessMove.to);
+          
+          if (!fromSquare || !toSquare) return;
+          
+          // Build move object for chess.js (UI only)
+          const moveObj = {
+            from: fromSquare,
+            to: toSquare,
+            promotion: moveRecord.chessMove.promotion 
+              ? moveRecord.chessMove.promotion.toLowerCase().charAt(0) 
+              : undefined,
+          };
+          
+          const result = chess.move(moveObj);
+          if (!result) {
+            console.warn('Failed to apply move in UI:', moveObj);
           }
         });
-        setGameState(chess);
       } catch (error) {
         console.error('Error applying move history:', error);
-        // Try to load from FEN if available
+        // Fallback to FEN if available
         if (game.board) {
           try {
             const chessFromFen = new Chess(game.board);
             setGameState(chessFromFen);
+            return;
           } catch (fenError) {
             console.error('Error loading from FEN:', fenError);
           }
         }
       }
+    } else if (game.board) {
+      // If no moves but FEN exists, use FEN
+      try {
+        const chessFromFen = new Chess(game.board);
+        setGameState(chessFromFen);
+        return;
+      } catch (fenError) {
+        console.error('Error loading from FEN:', fenError);
+      }
     }
-  }, [game?.moveHistory, game?.board]);
-
-  const isPlayerTurn = () => {
-    if (!game || !player) return false;
-    const isWhite = game.whitePlayer === player;
-    const isBlack = game.blackPlayer === player;
-    const isWhiteTurn = game.currentTurn === 'White';
-    return (isWhite && isWhiteTurn) || (isBlack && !isWhiteTurn);
-  };
+    
+    setGameState(chess);
+  }, [game?.moveHistory, game?.board, game?.matchId]);
 
   const canMakeMove = () => {
-    if (!game || !player) return false;
-    if (game.status !== 'InProgress') return false;
-    if (isLoading) return false;
-    return isPlayerTurn();
+    if (!game) return false;
+    if (game.status !== 'Active') return false;
+    if (!isPlayerTurn) return false;
+    return true;
   };
 
   const onSquareClick = (square) => {
@@ -72,12 +83,11 @@ const ChessBoard = ({ game, player, onMove, isLoading }) => {
     // If no square is selected, select this square
     if (!moveFrom) {
       const piece = gameState.get(square);
-      // Check if piece belongs to player
-      const isWhite = game.whitePlayer === player;
+      // Check if piece belongs to player (UI only - for highlighting)
       const pieceColor = piece?.color === 'w' ? 'White' : 'Black';
-      if (piece && pieceColor === (isWhite ? 'White' : 'Black')) {
+      if (piece && pieceColor === playerColor) {
         setMoveFrom(square);
-        // Get possible moves
+        // Get possible moves for UI highlighting (chess.js for UI only)
         const moves = gameState.moves({ square, verbose: true });
         setPossibleMoves(moves.map(m => m.to));
       }
@@ -91,72 +101,43 @@ const ChessBoard = ({ game, player, onMove, isLoading }) => {
       return;
     }
 
-    // Try to make move
-    try {
-      const move = gameState.move({
-        from: moveFrom,
-        to: square,
-        promotion: 'q', // Auto-promote to queen
-      });
+    // Format move and send to chain - WASM validates on-chain
+    // No validation here - just format and send
+    const chessMove = {
+      from: algebraicToSquare(moveFrom),
+      to: algebraicToSquare(square),
+      promotion: null, // Will be determined by WASM if needed
+    };
 
-      if (move) {
-        // Convert to our format
-        const chessMove = {
-          from: algebraicToSquare(moveFrom),
-          to: algebraicToSquare(square),
-          promotion: move.promotion ? move.promotion.toUpperCase() : null,
-        };
-
-        // Call onMove callback
-        if (onMove) {
-          onMove(chessMove);
-        }
-
-        // Reset selection
-        setMoveFrom(null);
-        setPossibleMoves([]);
-      } else {
-        // Invalid move, deselect
-        setMoveFrom(null);
-        setPossibleMoves([]);
-      }
-    } catch (error) {
-      console.error('Error making move:', error);
-      setMoveFrom(null);
-      setPossibleMoves([]);
+    // Send to chain - contract validates on-chain
+    if (onMove) {
+      onMove(chessMove);
     }
+
+    // Reset selection
+    setMoveFrom(null);
+    setPossibleMoves([]);
   };
 
   const onPieceDrop = (sourceSquare, targetSquare) => {
     if (!canMakeMove()) return false;
 
-    try {
-      const move = gameState.move({
-        from: sourceSquare,
-        to: targetSquare,
-        promotion: 'q',
-      });
+    // Format move and send to chain - WASM validates on-chain
+    // No validation here - just format and send
+    const chessMove = {
+      from: algebraicToSquare(sourceSquare),
+      to: algebraicToSquare(targetSquare),
+      promotion: null, // Will be determined by WASM if needed
+    };
 
-      if (move) {
-        const chessMove = {
-          from: algebraicToSquare(sourceSquare),
-          to: algebraicToSquare(targetSquare),
-          promotion: move.promotion ? move.promotion.toUpperCase() : null,
-        };
-
-        if (onMove) {
-          onMove(chessMove);
-        }
-
-        setMoveFrom(null);
-        setPossibleMoves([]);
-        return true;
-      }
-      return false;
-    } catch (error) {
-      console.error('Error dropping piece:', error);
-      return false;
+    // Send to chain - contract validates on-chain
+    if (onMove) {
+      onMove(chessMove);
     }
+
+    setMoveFrom(null);
+    setPossibleMoves([]);
+    return true; // Always return true to allow drop - validation happens on-chain
   };
 
   const getCustomSquareStyles = () => {
@@ -169,7 +150,7 @@ const ChessBoard = ({ game, player, onMove, isLoading }) => {
       };
     }
 
-    // Highlight possible move squares
+    // Highlight possible move squares (UI only)
     possibleMoves.forEach((square) => {
       styles[square] = {
         background: 'rgba(0, 255, 0, 0.4)',
@@ -179,27 +160,18 @@ const ChessBoard = ({ game, player, onMove, isLoading }) => {
     return styles;
   };
 
-  // Helper functions
-  const chessMoveToUci = (move) => {
-    if (!move || !move.from || !move.to) return null;
-    const fromFile = String.fromCharCode(97 + move.from.file);
-    const fromRank = move.from.rank + 1;
-    const toFile = String.fromCharCode(97 + move.to.file);
-    const toRank = move.to.rank + 1;
-    return `${fromFile}${fromRank}${toFile}${toRank}`;
-  };
-
-  const algebraicToSquare = (alg) => {
-    if (!alg || alg.length !== 2) return null;
-    const file = alg.charCodeAt(0) - 97;
-    const rank = parseInt(alg.charAt(1)) - 1;
-    return { file, rank };
-  };
-
   const getBoardOrientation = () => {
-    if (!game || !player) return 'white';
-    const isWhite = game.whitePlayer === player;
-    return isWhite ? 'white' : 'black';
+    if (!playerColor) return 'white';
+    return playerColor === 'White' ? 'white' : 'black';
+  };
+
+  const formatGameStatus = (status) => {
+    const statusMap = {
+      WaitingForPlayer: 'Waiting for player',
+      Active: 'In progress',
+      Ended: 'Game ended',
+    };
+    return statusMap[status] || status;
   };
 
   return (
@@ -218,31 +190,18 @@ const ChessBoard = ({ game, player, onMove, isLoading }) => {
           }}
         />
       </div>
-      {!canMakeMove() && game?.status === 'InProgress' && (
+      {!canMakeMove() && game?.status === 'Active' && (
         <div className="turn-indicator">
-          {isPlayerTurn() ? 'Your turn' : 'Waiting for opponent...'}
+          {isPlayerTurn ? 'Your turn' : 'Waiting for opponent...'}
         </div>
       )}
-      {game?.status !== 'InProgress' && (
+      {game?.status !== 'Active' && game?.status && (
         <div className="game-status">
           {formatGameStatus(game.status)}
         </div>
       )}
     </div>
   );
-};
-
-const formatGameStatus = (status) => {
-  const statusMap = {
-    WaitingForPlayer: 'Waiting for player',
-    InProgress: 'In progress',
-    WhiteWon: 'White won',
-    BlackWon: 'Black won',
-    Draw: 'Draw',
-    Stalemate: 'Stalemate',
-    Checkmate: 'Checkmate',
-  };
-  return statusMap[status] || status;
 };
 
 export default ChessBoard;

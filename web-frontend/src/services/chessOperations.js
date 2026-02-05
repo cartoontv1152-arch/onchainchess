@@ -121,6 +121,15 @@ export const RESIGN_GAME = gql`
   }
 `;
 
+export const END_GAME = gql`
+  mutation EndGame($gameId: UInt64!, $status: GameStatus!) {
+    endGame(gameId: $gameId, status: $status) {
+      success
+      message
+    }
+  }
+`;
+
 // Hooks
 export const useGame = (gameId) => {
   const { data, loading, error, refetch } = useQuery(GET_GAME, {
@@ -207,6 +216,17 @@ export const useResignGame = () => {
   };
 };
 
+export const useEndGame = () => {
+  const [endGame, { loading, error }] = useMutation(END_GAME);
+
+  return {
+    endGame: (gameId, status) =>
+      endGame({ variables: { gameId, status } }),
+    loading,
+    error,
+  };
+};
+
 export default {
   useGame,
   usePlayerGames,
@@ -215,4 +235,5 @@ export default {
   useJoinGame,
   useMakeMove,
   useResignGame,
+  useEndGame,
 };
