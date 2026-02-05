@@ -95,13 +95,34 @@ const Room = () => {
   };
 
   const isPlayerTurn = () => {
-    if (!game || !currentTurn) {
-      console.log("isPlayerTurn: no game or currentTurn", { game: !!game, currentTurn });
+    if (!game) {
+      console.log("isPlayerTurn: no game");
       return false;
     }
+    
     const playerColor = getPlayerColor();
-    const result = playerColor === currentTurn;
-    console.log("isPlayerTurn:", result, { playerColor, currentTurn });
+    if (!playerColor) {
+      console.log("isPlayerTurn: no playerColor");
+      return false;
+    }
+    
+    // If currentTurn is not set, check if game just started (no moves yet)
+    // In that case, White (host) should be able to move first
+    if (!currentTurn) {
+      const hasMoves = game.moveHistory && game.moveHistory.length > 0;
+      if (!hasMoves && playerColor === "White" && isHost) {
+        console.log("isPlayerTurn: game just started, White (host) can move");
+        return true;
+      }
+      console.log("isPlayerTurn: no currentTurn and not initial move", { hasMoves, playerColor, isHost });
+      return false;
+    }
+    
+    // Normalize both to uppercase for comparison (currentTurn might be "WHITE" or "White")
+    const normalizedPlayerColor = String(playerColor).toUpperCase();
+    const normalizedCurrentTurn = String(currentTurn).toUpperCase();
+    const result = normalizedPlayerColor === normalizedCurrentTurn;
+    console.log("isPlayerTurn:", result, { playerColor, currentTurn, normalizedPlayerColor, normalizedCurrentTurn });
     return result;
   };
 
@@ -150,8 +171,14 @@ const Room = () => {
                   {isPlayerTurn() ? "✅ Your turn - Click or drag pieces!" : "⏳ Opponent's turn"}
                 </div>
               )}
-              <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#666' }}>
-                Debug: canMove={String(isPlayerTurn())}, status={game.status}, currentTurn={currentTurn || 'null'}
+              <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#666', padding: '0.5rem', background: '#f0f0f0', borderRadius: '4px' }}>
+                <div>Debug Info:</div>
+                <div>canMove: {String(isPlayerTurn())}</div>
+                <div>status: {String(game.status)}</div>
+                <div>currentTurn: {String(currentTurn || 'null')}</div>
+                <div>playerColor: {String(getPlayerColor() || 'null')}</div>
+                <div>isHost: {String(isHost)}</div>
+                <div>moveHistory length: {game.moveHistory?.length || 0}</div>
               </div>
             </>
           )}

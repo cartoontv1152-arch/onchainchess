@@ -76,8 +76,8 @@ const ChessBoard = ({ game, playerColor, onMove, isPlayerTurn }) => {
       return false;
     }
     // Check status - it might be 'Active' or 'ACTIVE' or MatchStatus enum
-    const status = game.status;
-    const isActive = status === 'Active' || status === 'ACTIVE' || status === 'InProgress' || status === 'In Progress';
+    const status = String(game.status).toUpperCase();
+    const isActive = status === 'ACTIVE' || status === 'INPROGRESS' || status === 'IN_PROGRESS';
     if (!isActive) {
       console.log("canMakeMove: game not active, status:", status);
       return false;
