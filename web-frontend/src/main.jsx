@@ -1,7 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { LineraContextProvider } from "./context/LineraContext";
+import { LineraContextProvider } from "./context/LineraContext.jsx";
 import Home from "./pages/Home";
 import Room from "./pages/Room";
 import Result from "./pages/Result";

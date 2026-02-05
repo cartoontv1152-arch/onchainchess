@@ -32,6 +32,21 @@ export default defineConfig({
   },
   build: {
     outDir: 'build',
+    rollupOptions: {
+      output: {
+        // Ensure WASM files are handled correctly
+        assetFileNames: (assetInfo) => {
+          if (assetInfo.name && assetInfo.name.endsWith('.wasm')) {
+            return 'assets/[name][extname]';
+          }
+          return 'assets/[name]-[hash][extname]';
+        },
+      },
+    },
+  },
+  optimizeDeps: {
+    // Exclude WASM files from optimization
+    exclude: ['@linera/client'],
   },
   preview: {
     headers: {

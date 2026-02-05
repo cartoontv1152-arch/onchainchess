@@ -1,6 +1,6 @@
 import { useEffect, useContext, useRef } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
-import { LineraContext } from "../../context/LineraContext";
+import { LineraContext } from "../../context/LineraContext.jsx";
 import ChessBoard from "../../components/ChessBoard";
 import { squareToAlgebraic, algebraicToSquare } from "../../utils/chessUtils";
 import styles from "./styles.module.css";
@@ -69,9 +69,12 @@ const Room = () => {
 
   const handleMakeMove = async (chessMove) => {
     try {
+      console.log("Handling move:", chessMove);
       await makeMove(chessMove);
+      // Move will trigger refresh automatically
     } catch (error) {
       console.error("Error making move:", error);
+      alert(`Move failed: ${error?.message || error}`);
     }
   };
 
@@ -92,9 +95,14 @@ const Room = () => {
   };
 
   const isPlayerTurn = () => {
-    if (!game || !currentTurn) return false;
+    if (!game || !currentTurn) {
+      console.log("isPlayerTurn: no game or currentTurn", { game: !!game, currentTurn });
+      return false;
+    }
     const playerColor = getPlayerColor();
-    return playerColor === currentTurn;
+    const result = playerColor === currentTurn;
+    console.log("isPlayerTurn:", result, { playerColor, currentTurn });
+    return result;
   };
 
   if (!ready) {
@@ -139,9 +147,12 @@ const Room = () => {
               </div>
               {game.status === "Active" && (
                 <div className={styles.turnIndicator}>
-                  {isPlayerTurn() ? "✅ Your turn" : "⏳ Opponent's turn"}
+                  {isPlayerTurn() ? "✅ Your turn - Click or drag pieces!" : "⏳ Opponent's turn"}
                 </div>
               )}
+              <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#666' }}>
+                Debug: canMove={String(isPlayerTurn())}, status={game.status}, currentTurn={currentTurn || 'null'}
+              </div>
             </>
           )}
         </div>

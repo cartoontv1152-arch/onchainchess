@@ -386,6 +386,21 @@
   padding: 1rem;
   border-radius: 0.5rem;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 800px;
+  display: flex;
+  justify-content: center;
+}
+
+.chess-board-wrapper > div {
+  width: 100% !important;
+  max-width: 800px !important;
+}
+
+.chess-board-wrapper svg {
+  width: 100% !important;
+  height: auto !important;
+  max-width: 800px !important;
 }
 
 .turn-indicator {

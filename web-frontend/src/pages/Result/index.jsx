@@ -1,6 +1,6 @@
 import { useMemo, useContext } from "react";
 import { useNavigate } from "react-router-dom";
-import { LineraContext } from "../../context/LineraContext";
+import { LineraContext } from "../../context/LineraContext.jsx";
 import Button from "../../components/Button";
 import ChessBoard from "../../components/ChessBoard";
 import styles from "./styles.module.css";

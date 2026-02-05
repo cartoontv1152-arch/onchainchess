@@ -1,7 +1,7 @@
 import { useContext, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Button from "../../components/Button";
-import { LineraContext } from "../../context/LineraContext";
+import { LineraContext } from "../../context/LineraContext.jsx";
 import styles from "./styles.module.css";
 
 const PLAYER_NAME_STORAGE_KEY = "chess_player_name";

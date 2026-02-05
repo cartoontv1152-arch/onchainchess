@@ -71,14 +71,31 @@ const ChessBoard = ({ game, playerColor, onMove, isPlayerTurn }) => {
   }, [game?.moveHistory, game?.board, game?.matchId]);
 
   const canMakeMove = () => {
-    if (!game) return false;
-    if (game.status !== 'Active') return false;
-    if (!isPlayerTurn) return false;
+    if (!game) {
+      console.log("canMakeMove: no game");
+      return false;
+    }
+    // Check status - it might be 'Active' or 'ACTIVE' or MatchStatus enum
+    const status = game.status;
+    const isActive = status === 'Active' || status === 'ACTIVE' || status === 'InProgress' || status === 'In Progress';
+    if (!isActive) {
+      console.log("canMakeMove: game not active, status:", status);
+      return false;
+    }
+    if (!isPlayerTurn) {
+      console.log("canMakeMove: not player's turn, isPlayerTurn:", isPlayerTurn);
+      return false;
+    }
+    console.log("canMakeMove: true - can make move");
     return true;
   };
 
   const onSquareClick = (square) => {
-    if (!canMakeMove()) return;
+    console.log("onSquareClick called:", square, "canMakeMove:", canMakeMove(), "isPlayerTurn:", isPlayerTurn);
+    if (!canMakeMove()) {
+      console.log("Cannot make move - returning early");
+      return;
+    }
 
     // If no square is selected, select this square
     if (!moveFrom) {
@@ -101,17 +118,44 @@ const ChessBoard = ({ game, playerColor, onMove, isPlayerTurn }) => {
       return;
     }
 
+    const fromSquare = algebraicToSquare(moveFrom);
+    const toSquare = algebraicToSquare(square);
+    
+    if (!fromSquare || !toSquare) {
+      console.error("Invalid square conversion");
+      setMoveFrom(null);
+      setPossibleMoves([]);
+      return;
+    }
+
+    // Check if this is a promotion move (pawn reaching last rank)
+    let promotion = null;
+    const piece = gameState.get(moveFrom);
+    if (piece && piece.type === 'p') {
+      const targetRank = toSquare.rank;
+      if (targetRank === 0 || targetRank === 7) {
+        // Pawn promotion - default to Queen (user can change later if needed)
+        promotion = 'Queen';
+      }
+    }
+
     // Format move and send to chain - WASM validates on-chain
-    // No validation here - just format and send
     const chessMove = {
-      from: algebraicToSquare(moveFrom),
-      to: algebraicToSquare(square),
-      promotion: null, // Will be determined by WASM if needed
+      from: fromSquare,
+      to: toSquare,
+      promotion: promotion,
     };
 
     // Send to chain - contract validates on-chain
+    console.log("Sending move to chain:", chessMove);
     if (onMove) {
-      onMove(chessMove);
+      onMove(chessMove).catch((error) => {
+        console.error("Move failed:", error);
+        // Reset board state on error
+        setGameState(new Chess(gameState.fen()));
+      });
+    } else {
+      console.error("onMove handler is not provided!");
     }
 
     // Reset selection
@@ -120,24 +164,53 @@ const ChessBoard = ({ game, playerColor, onMove, isPlayerTurn }) => {
   };
 
   const onPieceDrop = (sourceSquare, targetSquare) => {
-    if (!canMakeMove()) return false;
+    console.log("onPieceDrop called:", sourceSquare, "->", targetSquare, "canMakeMove:", canMakeMove());
+    if (!canMakeMove()) {
+      console.log("Cannot make move - returning false");
+      return false;
+    }
+
+    const fromSquare = algebraicToSquare(sourceSquare);
+    const toSquare = algebraicToSquare(targetSquare);
+    
+    if (!fromSquare || !toSquare) {
+      console.error("Invalid square conversion");
+      return false;
+    }
+
+    // Check if this is a promotion move (pawn reaching last rank)
+    let promotion = null;
+    const piece = gameState.get(sourceSquare);
+    if (piece && piece.type === 'p') {
+      const targetRank = toSquare.rank;
+      if (targetRank === 0 || targetRank === 7) {
+        // Pawn promotion - default to Queen (user can change later if needed)
+        promotion = 'Queen';
+      }
+    }
 
     // Format move and send to chain - WASM validates on-chain
-    // No validation here - just format and send
     const chessMove = {
-      from: algebraicToSquare(sourceSquare),
-      to: algebraicToSquare(targetSquare),
-      promotion: null, // Will be determined by WASM if needed
+      from: fromSquare,
+      to: toSquare,
+      promotion: promotion,
     };
 
     // Send to chain - contract validates on-chain
+    console.log("Sending move to chain:", chessMove);
     if (onMove) {
-      onMove(chessMove);
+      onMove(chessMove).catch((error) => {
+        console.error("Move failed:", error);
+        // Reset board state on error
+        setGameState(new Chess(gameState.fen()));
+      });
+    } else {
+      console.error("onMove handler is not provided!");
     }
 
     setMoveFrom(null);
     setPossibleMoves([]);
-    return true; // Always return true to allow drop - validation happens on-chain
+    return true; // Allow drop - validation happens on-chain
   };
 
   const getCustomSquareStyles = () => {
@@ -175,26 +248,39 @@ const ChessBoard = ({ game, playerColor, onMove, isPlayerTurn }) => {
   };
 
   return (
-    <div className="chess-board-container">
-      <div className="chess-board-wrapper">
+    <div className="chess-board-container" style={{ width: '100%', maxWidth: '800px', margin: '0 auto' }}>
+      <div className="chess-board-wrapper" style={{ width: '100%', maxWidth: '800px' }}>
         <Chessboard
           position={gameState.fen()}
           onSquareClick={onSquareClick}
           onPieceDrop={onPieceDrop}
           customSquareStyles={getCustomSquareStyles()}
           boardOrientation={getBoardOrientation()}
-          arePiecesDraggable={canMakeMove()}
+          arePiecesDraggable={true}
+          boardWidth={800}
           customBoardStyle={{
             borderRadius: '4px',
             boxShadow: '0 2px 10px rgba(0, 0, 0, 0.5)',
+            cursor: canMakeMove() ? 'pointer' : 'not-allowed',
+          }}
+          customDropSquareStyle={{
+            boxShadow: 'inset 0 0 1px 4px rgba(255,255,0,.4)',
           }}
         />
       </div>
-      {!canMakeMove() && game?.status === 'Active' && (
-        <div className="turn-indicator">
-          {isPlayerTurn ? 'Your turn' : 'Waiting for opponent...'}
-        </div>
-      )}
+      <div className="turn-indicator" style={{ 
+        marginTop: '1rem', 
+        padding: '1rem', 
+        background: canMakeMove() ? '#4CAF50' : '#f44336',
+        color: 'white',
+        borderRadius: '8px',
+        textAlign: 'center',
+        fontWeight: 'bold'
+      }}>
+        {canMakeMove() ? '✅ Your turn - Click or drag pieces to move' : 
+         game?.status === 'Active' ? '⏳ Waiting for opponent...' : 
+         `Game Status: ${game?.status || 'Unknown'}`}
+      </div>
       {game?.status !== 'Active' && game?.status && (
         <div className="game-status">
           {formatGameStatus(game.status)}

@@ -310,11 +310,42 @@ const LineraContextProvider = ({ children }) => {
       }
 
       ensureWasmInstantiateStreamingFallback();
-      setInitStage("Initializing Linera...");
-      try {
-        await linera.initialize();
-      } catch (e) {
-        console.warn("Linera initialization warning:", e);
+      setInitStage("Initializing Linera WASM...");
+      
+      // Initialize Linera WASM if initialize function exists
+      if (typeof linera.initialize === 'function') {
+        try {
+          await linera.initialize();
+          // Give WASM a moment to fully initialize
+          await new Promise(resolve => setTimeout(resolve, 300));
+        } catch (e) {
+          console.error("Linera WASM initialization error:", e);
+          // Don't fail immediately - @linera/client might handle initialization internally
+        }
+      }
+      
+      // Verify WASM is ready by checking if key functions exist
+      // Wait with retries if not ready
+      let wasmReady = false;
+      let checkAttempts = 0;
+      const maxCheckAttempts = 10;
+      
+      while (!wasmReady && checkAttempts < maxCheckAttempts) {
+        checkAttempts++;
+        if (linera.signer && linera.signer.PrivateKey && typeof linera.signer.PrivateKey.fromMnemonic === 'function') {
+          wasmReady = true;
+        } else {
+          if (checkAttempts < maxCheckAttempts) {
+            console.log(`Waiting for WASM to be ready... (${checkAttempts}/${maxCheckAttempts})`);
+            await new Promise(resolve => setTimeout(resolve, 300));
+          }
+        }
+      }
+      
+      if (!wasmReady) {
+        setInitError("Linera WASM not properly initialized - signer not available. Please refresh the page.");
+        setInitStage("WASM initialization failed");
+        return;
       }
 
       setInitStage("Preparing mnemonic...");
@@ -443,12 +474,40 @@ const LineraContextProvider = ({ children }) => {
 
   const makeMove = useCallback(
     async (chessMove) => {
-      const from = `{ file: ${chessMove.from.file}, rank: ${chessMove.from.rank} }`;
-      const to = `{ file: ${chessMove.to.file}, rank: ${chessMove.to.rank} }`;
-      const promotion = chessMove.promotion ? `"${chessMove.promotion}"` : null;
-      const moveInput = `{ from: ${from}, to: ${to}${promotion ? `, promotion: ${promotion}` : ""} }`;
-      await gql(`mutation { makeMove(chessMove: ${moveInput}) }`);
-      await refresh();
+      try {
+        if (!chessMove || !chessMove.from || !chessMove.to) {
+          throw new Error("Invalid move format");
+        }
+        
+        const from = `{ file: ${chessMove.from.file}, rank: ${chessMove.from.rank} }`;
+        const to = `{ file: ${chessMove.to.file}, rank: ${chessMove.to.rank} }`;
+        const promotion = chessMove.promotion ? `"${chessMove.promotion}"` : null;
+        const moveInput = `{ from: ${from}, to: ${to}${promotion ? `, promotion: ${promotion}` : ""} }`;
+        
+        console.log("Making move:", moveInput);
+        setLastNotification("Processing move...");
+        
+        const result = await gql(`mutation { makeMove(chessMove: ${moveInput}) }`);
+        console.log("Move result:", result);
+        
+        // Wait a bit for the chain to process the move
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Refresh game state after move
+        await refresh();
+        
+        // Refresh again after a short delay to ensure we get the latest state
+        setTimeout(() => {
+          refresh();
+        }, 1000);
+        
+        setLastNotification(null);
+      } catch (error) {
+        console.error("Error making move:", error);
+        const errorMsg = error?.message || String(error);
+        setLastNotification(`Move failed: ${errorMsg}`);
+        throw error;
+      }
     },
     [gql, refresh]
   );
